@@ -1,0 +1,8 @@
+data/
+ext/
+scratch/
+.venv/
+__pycache__/
+*.pyc
+demo/index.html
+.pytest_cache/

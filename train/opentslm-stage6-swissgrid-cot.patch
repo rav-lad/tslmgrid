@@ -1,0 +1,183 @@
+diff --git a/curriculum_learning.py b/curriculum_learning.py
+index 4b25fe2..bfcf691 100644
+--- a/curriculum_learning.py
++++ b/curriculum_learning.py
+@@ -13,6 +13,7 @@ from typing import List, Optional, Dict, Any, Callable
+ from opentslm.time_series_datasets.TSQADataset import TSQADataset
+ from opentslm.time_series_datasets.m4.M4QADataset import M4QADataset
+ from opentslm.time_series_datasets.sleep.SleepEDFCoTQADataset import SleepEDFCoTQADataset
++from opentslm.time_series_datasets.swissgrid.SwissGridCoTQADataset import SwissGridCoTQADataset
+ from opentslm.time_series_datasets.har_cot.HARCoTQADataset import HARCoTQADataset
+ from opentslm.time_series_datasets.ecg_qa.ECGQACoTQADataset import ECGQACoTQADataset
+ from opentslm.time_series_datasets.util import (
+@@ -64,6 +65,7 @@ CURRICULUM_STAGES = [
+     "stage3_cot",
+     "stage4_sleep_cot",
+     "stage5_ecg_cot",
++    "stage6_swissgrid_cot",
+ ]
+ 
+ 
+@@ -768,6 +770,10 @@ class CurriculumTrainer:
+                         if stage == "stage2_captioning" and "id" in sample:
+                             result["time_series_id"] = sample["id"]
+ 
++                        # Keep the sample id when the dataset provides one (stage6_swissgrid_cot).
++                        if "id" in sample and "time_series_id" not in result:
++                            result["sample_id"] = sample["id"]
++
+                         # Add template_id and ecg_id for stage5_ecg_cot
+                         if stage == "stage5_ecg_cot":
+                             if "template_id" in sample:
+@@ -1329,6 +1335,30 @@ class CurriculumTrainer:
+             sampler=sampler,
+         )
+ 
++    def stage6_swissgrid_cot(
++        self, batch_size: int = None, eval_only: bool = False
++    ) -> Dict[str, Any]:
++        """Stage 6: Chain-of-Thought explanation of Swiss electricity anomalies (Swiss Grid Anomaly-CoT).
++
++        Configuration as the other CoT stages, with fewer epochs: the train split is small.
++        - Epochs: 20 (early stopping on validation loss)
++        - OpenTSLMSP: encoder_lr=2e-4, projector_lr=1e-4
++        - OpenTSLMFlamingo: base_lr=2e-4
++        - Metric: test loss; task metrics are computed by the swissgrid-cot evaluation.
++        """
++        return self._train_stage(
++            stage_name="stage6_swissgrid_cot",
++            dataset_class=SwissGridCoTQADataset,
++            num_epochs=20,
++            lr_encoder=2e-4,
++            lr_projector=1e-4,
++            lr_base=2e-4,
++            metric_func=None,
++            batch_size=batch_size,
++            eval_only=eval_only,
++            sampler=None,
++        )
++
+     def stage5_ecg_cot(
+         self, batch_size: int = None, eval_only: bool = False
+     ) -> Dict[str, Any]:
+@@ -1422,6 +1452,12 @@ class CurriculumTrainer:
+                 )
+                 results[stage] = stage_results
+                 self._mark_stage_completed(stage, stage_results)
++            elif stage == "stage6_swissgrid_cot":
++                stage_results = self.stage6_swissgrid_cot(
++                    batch_size=batch_size, eval_only=eval_only
++                )
++                results[stage] = stage_results
++                self._mark_stage_completed(stage, stage_results)
+             elif stage == "stage4_sleep_cot":
+                 stage_results = self.stage4_sleep_cot(
+                     batch_size=batch_size, eval_only=eval_only
+@@ -1434,6 +1470,12 @@ class CurriculumTrainer:
+                 )
+                 results[stage] = stage_results
+                 self._mark_stage_completed(stage, stage_results)
++            elif stage == "stage6_swissgrid_cot":
++                stage_results = self.stage6_swissgrid_cot(
++                    batch_size=batch_size, eval_only=eval_only
++                )
++                results[stage] = stage_results
++                self._mark_stage_completed(stage, stage_results)
+             else:
+                 if self.rank == 0:
+                     print(f"⚠️  Unknown stage: {stage}, skipping...")
+@@ -1553,7 +1595,7 @@ class CurriculumTrainer:
+         model = self._get_model()
+ 
+         # Enable LoRA for stages after stage2_captioning
+-        stages_with_lora = ["stage3_cot", "stage4_sleep_cot", "stage5_ecg_cot"]
++        stages_with_lora = ["stage3_cot", "stage4_sleep_cot", "stage5_ecg_cot", "stage6_swissgrid_cot"]
+ 
+         if stage_name in stages_with_lora:
+             if not getattr(model, "lora_enabled", False):
+@@ -1588,7 +1630,7 @@ class CurriculumTrainer:
+         model = self._get_model()
+ 
+         # Enable LoRA for stages after stage2_captioning
+-        stages_with_lora = ["stage3_cot", "stage4_sleep_cot", "stage5_ecg_cot"]
++        stages_with_lora = ["stage3_cot", "stage4_sleep_cot", "stage5_ecg_cot", "stage6_swissgrid_cot"]
+ 
+         if stage_name in stages_with_lora:
+             if not getattr(model, "lora_enabled", False):
+diff --git a/src/opentslm/time_series_datasets/swissgrid/SwissGridCoTQADataset.py b/src/opentslm/time_series_datasets/swissgrid/SwissGridCoTQADataset.py
+new file mode 100644
+index 0000000..ee9c4ba
+--- /dev/null
++++ b/src/opentslm/time_series_datasets/swissgrid/SwissGridCoTQADataset.py
+@@ -0,0 +1,68 @@
++# SPDX-License-Identifier: MIT
++"""Swiss Grid Anomaly-CoT: weekly Swiss power and weather series with rule-based explanations.
++
++Reads the samples exported by the swissgrid-cot project (``sgcot-export``), which takes them from
++the TimeNet dataset ``aionic/swiss-grid-anomaly-cot`` and adds rolling 7-day train windows. Point
++``SWISSGRID_COT_DIR`` at the folder holding ``train.jsonl``, ``validation.jsonl`` and ``test.jsonl``.
++
++Each sample is one task on one window: the cause of the largest consumption anomaly, the anomalous
++days, or the net import/export balance. The answer is the rationale, which ends with "Answer: ...".
++"""
++
++import json
++import os
++from typing import List, Literal, Tuple
++
++import numpy as np
++
++from opentslm.prompt.text_time_series_prompt import TextTimeSeriesPrompt
++from opentslm.time_series_datasets.QADataset import QADataset
++
++CAUSES = [
++    "none", "public_holiday", "bridge_day", "christmas_newyear", "summer_holidays",
++    "covid_lockdown", "cold_snap", "heatwave", "unexplained",
++]
++
++
++def _read(path: str) -> list:
++    with open(path, encoding="utf-8") as f:
++        return [json.loads(line) for line in f if line.strip()]
++
++
++class SwissGridCoTQADataset(QADataset):
++    def __init__(self, split: Literal["train", "test", "validation"], EOS_TOKEN: str,
++                 format_sample_str: bool = False, time_series_format_function=None):
++        super().__init__(split, EOS_TOKEN, format_sample_str, time_series_format_function)
++
++    def _load_splits(self) -> Tuple[list, list, list]:
++        root = os.environ.get("SWISSGRID_COT_DIR", "data/swissgrid_cot")
++        return tuple(_read(os.path.join(root, f"{s}.jsonl")) for s in ("train", "validation", "test"))
++
++    def _get_answer(self, row) -> str:
++        return row["answer"]
++
++    def _get_pre_prompt(self, row) -> str:
++        return row["pre_prompt"]
++
++    def _get_post_prompt(self, row) -> str:
++        return row["post_prompt"]
++
++    def _get_text_time_series_prompt_list(self, row) -> List[TextTimeSeriesPrompt]:
++        prompts = []
++        for series in row["series"]:
++            values = np.asarray(series["values"], dtype=np.float64)
++            mean = float(values.mean())
++            std = max(float(values.std()), 1e-6)
++            text = (f"The following is the hourly {series['name'].lower()} in {series['unit']}, "
++                    f"it has mean {mean:.1f} and std {std:.1f}:")
++            prompts.append(TextTimeSeriesPrompt(text, ((values - mean) / std).tolist()))
++        return prompts
++
++    def _format_sample(self, row):
++        sample = super()._format_sample(row)
++        sample["id"] = row["id"]
++        return sample
++
++    @staticmethod
++    def get_labels() -> List[str]:
++        return CAUSES
+diff --git a/src/opentslm/time_series_datasets/swissgrid/__init__.py b/src/opentslm/time_series_datasets/swissgrid/__init__.py
+new file mode 100644
+index 0000000..e69de29

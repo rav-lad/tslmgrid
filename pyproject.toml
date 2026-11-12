@@ -1,0 +1,44 @@
+[project]
+name = "swissgrid-anomalies"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "holidays>=0.108",
+    "matplotlib>=3.11.2",
+    "openpyxl>=3.1.5",
+    "pandas>=3.1.1",
+    "pyarrow>=26.0.1",
+    "requests>=2.34.2",
+    "tabulate>=0.10.0",
+    "timenet",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
+
+[project.scripts]
+sgcot-download = "swissgrid_cot.download:main"
+sgcot-ingest = "swissgrid_cot.ingest.build:main"
+sgcot-annotate = "swissgrid_cot.annotate.build:main"
+sgcot-export = "swissgrid_cot.train.export:main"
+sgcot-baselines = "swissgrid_cot.eval.baselines:main"
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.uv.build-backend]
+module-name = "swissgrid_cot"
+
+[tool.uv.workspace]
+members = [
+    "ext/TimeNet/packages/timenet",
+]
+
+[tool.uv.sources]
+timenet = { workspace = true, editable = true }

@@ -1,0 +1,1843 @@
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/__init__.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/__init__.py
+new file mode 100644
+index 0000000..d9cbba5
+--- /dev/null
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/__init__.py
+@@ -0,0 +1,4 @@
++"""Connectors for datasets published by the aionic team."""
++
++# Keep this a regular package, not a namespace package. pkgutil.walk_packages finds the
++# connector packages below it only through this __init__.py.
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/__init__.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/__init__.py
+new file mode 100644
+index 0000000..7cf9cce
+--- /dev/null
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/__init__.py
+@@ -0,0 +1,6 @@
++"""Swiss Grid Anomaly-CoT: weekly Swiss power and weather windows with rule-based anomaly explanations."""
++
++from timenet_connectors.datasets.aionic.swiss_grid_anomaly_cot.connector import (
++    CONNECTOR as CONNECTOR,
++    SwissGridAnomalyCotConnector as SwissGridAnomalyCotConnector,
++)
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/__init__.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/__init__.py
+new file mode 100644
+index 0000000..3e4e166
+--- /dev/null
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/__init__.py
+@@ -0,0 +1 @@
++"""The annotation pipeline, copied from the swissgrid_cot project by its sync script."""
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/anomalies.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/anomalies.py
+new file mode 100644
+index 0000000..baa25a1
+--- /dev/null
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/anomalies.py
+@@ -0,0 +1,76 @@
++"""Flag anomalous days from the baseline residual with a robust z-score.
++
++    rel_d = (load_d - expected_d) / expected_d
++    z_d   = (rel_d - median_fit) / (1.4826 * MAD_fit)
++
++The median and MAD come from the baseline's own fit days (train years, ordinary days only), so the
++scale is that of normal days and nothing is learned from validation or test.
++
++Threshold |z| >= 3.0. Chosen on train years (see reports/phase3/threshold_table.md): it flags about
++25 days a year, 91 % of public holidays (share >= 0.5) and 0.6 % of ordinary days.
++"""
++
++from dataclasses import dataclass
++
++import numpy as np
++import pandas as pd
++
++from .baseline import Baseline, fit_days
++
++
++Z_THRESHOLD = 3.0
++
++
++@dataclass(frozen=True)
++class ResidualScale:
++    median: float
++    robust_sd: float
++
++
++def residual_scale(d: pd.DataFrame, rel: pd.Series) -> ResidualScale:
++    r = rel[fit_days(d)]
++    med = float(r.median())
++    return ResidualScale(median=med, robust_sd=float(1.4826 * (r - med).abs().median()))
++
++
++def score_days(d: pd.DataFrame, baseline: Baseline) -> tuple[pd.DataFrame, ResidualScale]:
++    out = d.copy()
++    out["expected_mw"] = baseline.predict(d)
++    out["rel_dev"] = (out.load_mw - out.expected_mw) / out.expected_mw
++    scale = residual_scale(out, out.rel_dev)
++    out["z"] = (out.rel_dev - scale.median) / scale.robust_sd
++    out["is_anomaly"] = out.z.abs() >= Z_THRESHOLD
++    out.loc[out.z.isna(), "is_anomaly"] = False
++    return out, scale
++
++
++def threshold_table(scored: pd.DataFrame, thresholds=(2.0, 2.5, 3.0, 3.5, 4.0)) -> pd.DataFrame:
++    rows = []
++    train = scored[scored.split == "train"]
++    for t in thresholds:
++        a = train.z.abs() >= t
++        rows.append({
++            "threshold": t,
++            "flagged_days_per_year": round(float(a.mean() * 365.25), 1),
++            "holiday_recall": round(float(a[train.is_holiday].mean()), 3),
++            "ordinary_day_flag_rate": round(float(a[~train.special_day].mean()), 4),
++            "christmas_period_recall": round(float(a[train.christmas_period].mean()), 3),
++        })  # fmt: skip
++    return pd.DataFrame(rows)
++
++
++def events(scored: pd.DataFrame) -> pd.DataFrame:
++    """Merge consecutive anomalous days of the same sign into events."""
++    a = scored[scored.is_anomaly].copy()
++    if a.empty:
++        return pd.DataFrame(columns=["start", "end", "n_days", "sign", "peak_z"])
++    sign = np.sign(a.z)
++    new = (a.index.to_series().diff() != pd.Timedelta("1D")) | (sign != sign.shift())
++    a["event_id"] = new.cumsum().to_numpy()
++    return a.groupby("event_id").agg(
++        start=("z", lambda s: s.index.min()),
++        end=("z", lambda s: s.index.max()),
++        n_days=("z", "size"),
++        sign=("z", lambda s: int(np.sign(s.iloc[0]))),
++        peak_z=("z", lambda s: float(s.loc[s.abs().idxmax()])),
++    )
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/assemble.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/assemble.py
+new file mode 100644
+index 0000000..f729ea0
+--- /dev/null
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/assemble.py
+@@ -0,0 +1,41 @@
++"""Assemble the aligned hourly national table from parsed sources. No file or network access."""
++
++import pandas as pd
++
++from . import calendar_ch, meteoswiss, swissgrid
++from .timefields import field, normalize
++
++
++TZ = swissgrid.TZ
++
++
++def hourly_dataset(quarters: pd.DataFrame, stations: dict[str, pd.DataFrame]) -> pd.DataFrame:
++    """Join Swissgrid hourly power, national weather and the holiday calendar.
++
++    Args:
++        quarters: The Swissgrid quarter hours of every year, indexed by UTC start, in kWh.
++        stations: The hourly frame of each SwissMetNet station, indexed by UTC start.
++
++    Returns:
++        One row per UTC hour with power in MW, weather, local calendar fields and holiday flags.
++
++    Raises:
++        SwissgridFormatError: If the yearly files overlap.
++    """
++    if quarters.index.has_duplicates:
++        raise swissgrid.SwissgridFormatError("the yearly files overlap")
++    hourly = swissgrid.to_hourly_mw(quarters.sort_index())
++    population = meteoswiss.canton_population()
++    weather = meteoswiss.national_series(
++        stations, meteoswiss.station_weights(population), pd.DatetimeIndex(hourly.index)
++    )
++    df = hourly.join(weather)
++    local = pd.DatetimeIndex(df.index).tz_convert(TZ)
++    df["local_date"] = normalize(local.tz_localize(None))
++    df["local_hour"] = field(local, "hour")
++    df["dow"] = field(local, "day_of_week")
++    first, last = df.local_date.min(), df.local_date.max()
++    cal = calendar_ch.holiday_calendar(str(first.date()), str(last.date()), population)
++    df = df.join(cal, on="local_date")
++    df["year"] = df.local_date.dt.year
++    return df
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/baseline.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/baseline.py
+new file mode 100644
+index 0000000..7bf41d2
+--- /dev/null
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/baseline.py
+@@ -0,0 +1,165 @@
++"""Expected daily end-user consumption: a transparent linear model, fitted on train years only.
++
++    load_d = profile[daytype(d), month(d)]
++             + b_hdd * HDD(T_d) + b_hdd_lag * HDD(T_{d-1}) + b_cdd * CDD(T_d)
++             + b_rad * radiation_d + b_trend * years_since_2020
++
++* daytype: Monday, Tuesday-Thursday, Friday, Saturday, Sunday (5 types) x 12 months = 60 levels.
++* HDD(T) = max(0, 16 - T), CDD(T) = max(0, T - 20), on the daily mean population-weighted temperature.
++  Yesterday's HDD captures the thermal inertia of buildings.
++* radiation: daily mean global radiation (W/m²). Behind-the-meter PV lowers metered consumption.
++* The trend absorbs slow drift (efficiency, PV growth). It is linear in time, so its extrapolation
++  to the validation and test years is part of what the evaluation measures.
++
++Days excluded from the fit, because they are exactly what the model must NOT learn as normal:
++public holidays (population share >= 0.2), bridge days, 22 Dec - 6 Jan (the school holidays of
++all cantons) and the 2020 COVID-19 lockdown. Fitted by ordinary least squares (numpy.linalg.lstsq). No other tuning.
++"""
++
++from dataclasses import dataclass
++
++import numpy as np
++import pandas as pd
++
++from .timefields import field
++
++
++TRAIN_YEARS = (2020, 2021, 2022, 2023)
++VALIDATION_YEARS = (2024,)
++TEST_YEARS = (2025,)
++HDD_BASE_C = 16.0
++CDD_BASE_C = 20.0
++PARTIAL_HOLIDAY_SHARE = 0.2
++
++# Swiss Federal Council: "extraordinary situation" from 16 March 2020. Step 1 of the reopening on
++# 27 April 2020, step 2 (shops, schools) on 11 May 2020. The lockdown period ends the day before step 2.
++LOCKDOWN = (pd.Timestamp("2020-03-16"), pd.Timestamp("2020-05-10"))
++
++
++def split_of_year(year: int) -> str:
++    if year in TRAIN_YEARS:
++        return "train"
++    if year in VALIDATION_YEARS:
++        return "validation"
++    if year in TEST_YEARS:
++        return "test"
++    raise ValueError(f"year {year} is in no split")
++
++
++def daytype(dow: pd.Series) -> pd.Series:
++    return dow.map({0: "mon", 1: "tue-thu", 2: "tue-thu", 3: "tue-thu", 4: "fri", 5: "sat", 6: "sun"})
++
++
++CHRISTMAS_START = (12, 22)
++"""(month, day) of the first day of the Christmas period."""
++CHRISTMAS_END = (1, 6)
++"""(month, day) of the last day of the Christmas period, in the next year."""
++SUMMER_HOLIDAY_START = (7, 14)
++SUMMER_HOLIDAY_END = (8, 15)
++
++
++def _from(dates: pd.DatetimeIndex, month_day: tuple[int, int]) -> np.ndarray:
++    month, day = month_day
++    return (field(dates, "month") == month) & (field(dates, "day") >= day)
++
++
++def _until(dates: pd.DatetimeIndex, month_day: tuple[int, int]) -> np.ndarray:
++    month, day = month_day
++    return (field(dates, "month") == month) & (field(dates, "day") <= day)
++
++
++def is_christmas_period(dates: pd.DatetimeIndex) -> np.ndarray:
++    """Flag 22 December - 6 January, the Christmas school holidays, which every canton has in this window.
++
++    Returns:
++        A boolean array, one value per date.
++    """
++    return _from(dates, CHRISTMAS_START) | _until(dates, CHRISTMAS_END)
++
++
++def is_summer_holiday_core(dates: pd.DatetimeIndex) -> np.ndarray:
++    """Flag 14 July - 15 August, when the summer school holidays of nearly all cantons overlap.
++
++    Many firms close in these weeks too (construction-industry holidays). The period is not excluded
++    from the fit, since it is a month of ordinary days as well; it only serves to attribute a cause.
++
++    Returns:
++        A boolean array, one value per date.
++    """
++    return _from(dates, SUMMER_HOLIDAY_START) | _until(dates, SUMMER_HOLIDAY_END)
++
++
++def is_lockdown(dates: pd.DatetimeIndex) -> np.ndarray:
++    return (dates >= LOCKDOWN[0]) & (dates <= LOCKDOWN[1])
++
++
++def daily_frame(hourly: pd.DataFrame) -> pd.DataFrame:
++    """One row per local day with the inputs of the model and the facts used downstream."""
++    g = hourly.groupby("local_date")
++    d = g.agg(
++        load_mw=("load_enduser_mw", "mean"),
++        load_total_mw=("load_total_mw", "mean"),
++        production_mw=("production_mw", "mean"),
++        net_import_mw=("net_import_mw", "mean"),
++        temp_c=("temp_c", "mean"),
++        temp_min_c=("temp_c", "min"),
++        temp_max_c=("temp_c", "max"),
++        radiation_wm2=("radiation_wm2", "mean"),
++        dow=("dow", "first"),
++        holiday_pop_share=("holiday_pop_share", "first"),
++        holiday_name=("holiday_name", "first"),
++        is_holiday=("is_holiday", "first"),
++        is_bridge_day=("is_bridge_day", "first"),
++        n_hours=("load_enduser_mw", "size"),
++    )
++    for b in ("at", "de", "fr", "it"):
++        d[f"net_import_{b}_mw"] = g[f"net_import_{b}_mw"].mean()
++    d.index = pd.DatetimeIndex(d.index, name="date")
++    d["year"] = field(d.index, "year")
++    d["split"] = d.year.map(split_of_year)
++    d["daytype"] = daytype(d.dow)
++    d["month"] = field(d.index, "month")
++    d["hdd"] = np.maximum(0.0, HDD_BASE_C - d.temp_c)
++    d["hdd_lag1"] = d.hdd.shift(1)
++    d["cdd"] = np.maximum(0.0, d.temp_c - CDD_BASE_C)
++    d["trend_years"] = (d.index - pd.Timestamp("2020-01-01")).days / 365.25
++    d["christmas_period"] = is_christmas_period(d.index)
++    d["lockdown"] = is_lockdown(d.index)
++    d["summer_holiday_core"] = is_summer_holiday_core(d.index)
++    d["special_day"] = (
++        (d.holiday_pop_share >= PARTIAL_HOLIDAY_SHARE) | d.is_bridge_day | d.christmas_period | d.lockdown
++    )
++    return d
++
++
++@dataclass(frozen=True)
++class Baseline:
++    columns: tuple[str, ...]
++    coef: np.ndarray
++    n_fit_days: int
++
++    def design(self, d: pd.DataFrame) -> pd.DataFrame:
++        levels = pd.get_dummies(d.daytype + "_" + d.month.astype(str).str.zfill(2), dtype=float)
++        design = pd.concat([levels, d[["hdd", "hdd_lag1", "cdd", "radiation_wm2", "trend_years"]]], axis=1)
++        return design.reindex(columns=list(self.columns), fill_value=0.0)
++
++    def predict(self, d: pd.DataFrame) -> pd.Series:
++        return pd.Series(self.design(d).to_numpy() @ self.coef, index=d.index, name="expected_mw")
++
++    def named_coefficients(self) -> dict[str, float]:
++        return dict(zip(self.columns, self.coef.round(3).tolist(), strict=True))
++
++
++def fit_days(d: pd.DataFrame) -> pd.Series:
++    return (d.split == "train") & ~d.special_day & d[["temp_c", "hdd_lag1", "radiation_wm2"]].notna().all(axis=1)
++
++
++def fit_baseline(d: pd.DataFrame) -> Baseline:
++    mask = fit_days(d)
++    train = d[mask]
++    levels = sorted((train.daytype + "_" + train.month.astype(str).str.zfill(2)).unique())
++    columns = (*levels, "hdd", "hdd_lag1", "cdd", "radiation_wm2", "trend_years")
++    proto = Baseline(columns=columns, coef=np.zeros(len(columns)), n_fit_days=int(mask.sum()))
++    design = proto.design(train).to_numpy()
++    coef, *_ = np.linalg.lstsq(design, train.load_mw.to_numpy(), rcond=None)
++    return Baseline(columns=columns, coef=coef, n_fit_days=int(mask.sum()))
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/calendar_ch.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/calendar_ch.py
+new file mode 100644
+index 0000000..099fa80
+--- /dev/null
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/calendar_ch.py
+@@ -0,0 +1,54 @@
++"""Swiss public holidays per local day, weighted by the population of the cantons that observe them.
++
++Only the federal 1 August is a holiday everywhere. Every other public holiday is cantonal. A day's
++``holiday_pop_share`` is the share of the Swiss population living in a canton where the day is a
++public holiday (``holidays`` package, category ``public``).
++
++Rules:
++
++* ``is_holiday``: ``holiday_pop_share >= 0.5``.
++* ``is_bridge_day``: a Monday before a Tuesday holiday, or a Friday after a Thursday holiday, that is
++  not itself a holiday. This is the usual case of Ascension Friday.
++"""
++
++import holidays
++import pandas as pd
++
++from .timefields import field
++
++
++HOLIDAY_SHARE = 0.5
++MONDAY, FRIDAY = 0, 4
++
++
++def _most_shared(shares: dict[str, float] | None) -> str | None:
++    if not shares:
++        return None
++    return max(shares.items(), key=lambda item: item[1])[0]
++
++
++def holiday_calendar(start: str, end: str, population: pd.Series) -> pd.DataFrame:
++    days = pd.date_range(start, end, freq="D")
++    years = sorted({int(y) for y in field(days, "year")})
++    total = float(population.sum())
++    share = pd.Series(0.0, index=days)
++    names: dict[str, dict[str, float]] = {}
++    for canton, pop in population.items():
++        cal = holidays.Switzerland(subdiv=canton, years=years, categories=("public",), language="en_US")
++        for day, name in cal.items():
++            ts = pd.Timestamp(day)
++            if ts in share.index:
++                share[ts] += pop / total
++                by_name = names.setdefault(str(day), {})
++                by_name[name] = by_name.get(name, 0.0) + pop / total
++
++    cal = pd.DataFrame(index=pd.DatetimeIndex(days, name="local_date"))
++    cal["holiday_pop_share"] = share.round(4)
++    cal["holiday_name"] = [_most_shared(names.get(str(d.date()))) for d in days]
++    cal["is_holiday"] = cal.holiday_pop_share >= HOLIDAY_SHARE
++    dow = field(cal.index, "day_of_week")
++    hol = cal.is_holiday
++    next_is_hol = hol.shift(-1, fill_value=False)
++    prev_is_hol = hol.shift(1, fill_value=False)
++    cal["is_bridge_day"] = ~hol & (((dow == MONDAY) & next_is_hol) | ((dow == FRIDAY) & prev_is_hol))
++    return cal
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/causes.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/causes.py
+new file mode 100644
+index 0000000..eed3952
+--- /dev/null
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/causes.py
+@@ -0,0 +1,124 @@
++"""Attribute a cause to each anomalous day with explicit, ordered rules. No model, no LLM.
++
++Below expectation (z <= -3), first matching rule wins:
++  1. covid_lockdown     date in the 2020 lockdown (16 Mar - 10 May 2020)
++  2. christmas_newyear  22 Dec - 6 Jan (Christmas school holidays)
++  3. public_holiday     holiday for >= 20 % of the population (the share is stated in the facts)
++  4. bridge_day         Monday before a Tuesday holiday / Friday after a Thursday holiday
++  5. summer_holidays    14 Jul - 15 Aug (overlap of the cantonal summer school holidays)
++  6. unexplained
++
++Above expectation (z >= +3):
++  1. cold_snap          daily mean temperature >= 4 °C below the train-years normal for the date
++  2. heatwave           daily mean temperature >= 4 °C above normal, or >= 24 °C, from May to September
++  3. unexplained
++
++The temperature normal is the train-years (2020-2023) mean for each day of the year, smoothed with a
++centred 31-day circular window. It uses no validation or test data.
++
++At |z| >= 3, no day of 2020-2025 lies above expectation: the temperature terms of the baseline absorb
++the weather (the largest positive z is 2.68, during the cold spell of 21-23 November 2025). The two
++weather causes are kept for completeness. Each rationale states the weather effect separately (see
++``weather_effect``).
++"""
++
++import numpy as np
++import pandas as pd
++
++from .baseline import PARTIAL_HOLIDAY_SHARE
++from .timefields import field
++
++
++CAUSES = (
++    "none",
++    "public_holiday",
++    "bridge_day",
++    "christmas_newyear",
++    "summer_holidays",
++    "covid_lockdown",
++    "cold_snap",
++    "heatwave",
++    "unexplained",
++)
++CAUSE_DESCRIPTIONS = {
++    "none": "No day of the window deviates from the weather- and calendar-adjusted expectation.",
++    "public_holiday": "A public holiday observed by at least 20 % of the Swiss population.",
++    "bridge_day": "A working day between a public holiday and the weekend.",
++    "christmas_newyear": "The Christmas and New Year holiday period, 22 December to 6 January.",
++    "summer_holidays": "The core summer holiday weeks, 14 July to 15 August.",
++    "covid_lockdown": "The COVID-19 lockdown in Switzerland, 16 March to 10 May 2020.",
++    "cold_snap": "Consumption above expectation during unusually cold weather.",
++    "heatwave": "Consumption above expectation during unusually hot weather.",
++    "unexplained": "A deviation that no calendar or weather rule explains.",
++}
++TEMP_ANOMALY_C = 4.0
++DAYS_IN_YEAR = 365
++"""29 February shares the normal of 31 December's position: day 366 maps to day 365."""
++HOT_DAY_C = 24.0
++
++
++def temperature_normal(d: pd.DataFrame) -> pd.Series:
++    """Train-years mean temperature for each day of the year, circular 31-day smoothing.
++
++    Returns:
++        The normal temperature (°C) of each day of ``d``.
++    """
++    train = d[d.split == "train"]
++    doy = np.minimum(field(train.index, "day_of_year"), DAYS_IN_YEAR)
++    by_doy = train.temp_c.groupby(doy).mean().reindex(range(1, DAYS_IN_YEAR + 1))
++    padded = pd.concat([by_doy.iloc[-15:], by_doy, by_doy.iloc[:15]])
++    smooth = padded.rolling(31, center=True, min_periods=20).mean().iloc[15:-15]
++    smooth.index = range(1, DAYS_IN_YEAR + 1)
++    all_doy = np.minimum(field(d.index, "day_of_year"), DAYS_IN_YEAR)
++    return pd.Series(smooth.reindex(all_doy).to_numpy(), index=d.index, name="temp_normal_c")
++
++
++def attribute(scored: pd.DataFrame) -> pd.DataFrame:
++    out = scored.copy()
++    out["temp_normal_c"] = temperature_normal(out)
++    out["temp_anomaly_c"] = out.temp_c - out.temp_normal_c
++    summer = np.isin(field(out.index, "month"), [5, 6, 7, 8, 9])
++
++    low = out.is_anomaly & (out.z < 0)
++    high = out.is_anomaly & (out.z > 0)
++    conditions = [
++        low & out.lockdown,
++        low & out.christmas_period,
++        low & (out.holiday_pop_share >= PARTIAL_HOLIDAY_SHARE),
++        low & out.is_bridge_day,
++        low & out.summer_holiday_core,
++        low,
++        high & (out.temp_anomaly_c <= -TEMP_ANOMALY_C),
++        high & summer & ((out.temp_anomaly_c >= TEMP_ANOMALY_C) | (out.temp_c >= HOT_DAY_C)),
++        high,
++    ]
++    choices = [
++        "covid_lockdown",
++        "christmas_newyear",
++        "public_holiday",
++        "bridge_day",
++        "summer_holidays",
++        "unexplained",
++        "cold_snap",
++        "heatwave",
++        "unexplained",
++    ]
++    out["cause"] = np.select(conditions, choices, default="none")
++    return out
++
++
++def weather_effect(scored: pd.DataFrame, baseline) -> pd.Series:
++    """MW that the day's weather adds to expected consumption, against normal temperature.
++
++    The baseline evaluated with today's and yesterday's temperature, minus the same baseline with
++    the train-years normal temperature for both days. Radiation is kept as observed.
++
++    Returns:
++        The weather effect in MW, one value per day.
++    """
++    normal = scored.copy()
++    tn = temperature_normal(scored)
++    normal["hdd"] = np.maximum(0.0, 16.0 - tn)
++    normal["hdd_lag1"] = normal.hdd.shift(1)
++    normal["cdd"] = np.maximum(0.0, tn - 20.0)
++    return (baseline.predict(scored) - baseline.predict(normal)).rename("weather_effect_mw")
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/meteoswiss.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/meteoswiss.py
+new file mode 100644
+index 0000000..7d1be88
+--- /dev/null
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/meteoswiss.py
+@@ -0,0 +1,88 @@
++"""Parse SwissMetNet hourly files and build population-weighted national series.
++
++* ``reference_timestamp`` is ``dd.mm.yyyy HH:MM`` in UTC and labels the END of the hour. The
++  radiation-weighted mean label hour at Zürich is 11.99 UTC, against 11.93 expected for end labels
++  (solar noon ~11:26 UTC). See docs/phase1_exploration.md.
++* ``tre200h0``: air temperature 2 m, hourly mean, °C. ``gre000h0``: global radiation, hourly mean, W/m².
++"""
++
++from io import StringIO
++from pathlib import Path
++
++import pandas as pd
++
++from .stations import CANTON_POPULATION_2023, STATION_CANTONS
++
++
++PARAMETERS = {"tre200h0": "temp_c", "gre000h0": "radiation_wm2"}
++MIN_WEIGHT_COVERAGE = 0.8
++"""A national value needs stations covering at least this share of the population weight. Below
++that, the value stays null. Missing station values are never filled."""
++
++# German canton names as the BFS table writes them -> canton code.
++_BFS_NAMES = {
++    "Zürich": "ZH", "Bern / Berne": "BE", "Luzern": "LU", "Uri": "UR", "Schwyz": "SZ",
++    "Obwalden": "OW", "Nidwalden": "NW", "Glarus": "GL", "Zug": "ZG", "Fribourg / Freiburg": "FR",
++    "Solothurn": "SO", "Basel-Stadt": "BS", "Basel-Landschaft": "BL", "Schaffhausen": "SH",
++    "Appenzell Ausserrhoden": "AR", "Appenzell Innerrhoden": "AI", "St. Gallen": "SG",
++    "Graubünden / Grigioni / Grischun": "GR", "Aargau": "AG", "Thurgau": "TG", "Ticino": "TI",
++    "Vaud": "VD", "Valais / Wallis": "VS", "Neuchâtel": "NE", "Genève": "GE", "Jura": "JU",
++}  # fmt: skip
++
++
++class MeteoSwissFormatError(ValueError):
++    """A station file does not have the expected shape."""
++
++
++def read_canton_population(path: Path) -> pd.Series:
++    raw = path.read_bytes()
++    try:
++        text = raw.decode("utf-8")
++    except UnicodeDecodeError:
++        text = raw.decode("latin-1")
++    df = pd.read_csv(StringIO(text))
++    names = df.iloc[:, 1].str.removeprefix("- ").str.strip()
++    unknown = sorted(set(names) - set(_BFS_NAMES))
++    if unknown:
++        raise MeteoSwissFormatError(f"unknown canton names in {path.name}: {unknown}")
++    pop = pd.Series(df.iloc[:, -1].astype("int64").to_numpy(), index=names.map(_BFS_NAMES), name="population")
++    if set(pop.index) != set(_BFS_NAMES.values()):
++        raise MeteoSwissFormatError(f"{path.name} lacks cantons {sorted(set(_BFS_NAMES.values()) - set(pop.index))}")
++    return pop
++
++
++def canton_population() -> pd.Series:
++    """The 2023 BFS population per canton, as a Series indexed by canton code."""
++    return pd.Series(CANTON_POPULATION_2023, name="population", dtype="int64")
++
++
++def station_weights(population: pd.Series) -> pd.Series:
++    w = pd.Series({s: int(population[list(c)].sum()) for s, c in STATION_CANTONS.items()}, dtype="float64")
++    return w / w.sum()
++
++
++def read_station(path: Path, station: str) -> pd.DataFrame:
++    """Read one station, indexed by the UTC start of each hour."""
++    df = pd.read_csv(path, sep=";", usecols=["station_abbr", "reference_timestamp", *PARAMETERS])
++    if set(df.station_abbr) != {station}:
++        raise MeteoSwissFormatError(f"{path.name}: station_abbr {sorted(set(df.station_abbr))}, expected {station}")
++    end = pd.to_datetime(df.reference_timestamp, format="%d.%m.%Y %H:%M").dt.tz_localize("UTC")
++    start = pd.DatetimeIndex(end - pd.Timedelta("1h"), name="utc_start")
++    if start.has_duplicates:
++        raise MeteoSwissFormatError(f"{path.name}: duplicated timestamps")
++    return df[list(PARAMETERS)].rename(columns=PARAMETERS).set_index(start).astype("float64")
++
++
++def national_series(stations: dict[str, pd.DataFrame], weights: pd.Series, index: pd.DatetimeIndex) -> pd.DataFrame:
++    """Population-weighted mean over the stations that report, if they cover enough weight."""
++    out = {}
++    for col in PARAMETERS.values():
++        values = pd.DataFrame({s: df[col].reindex(index) for s, df in stations.items()})
++        present = values.notna()
++        w = present.mul(weights[values.columns], axis=1)
++        coverage = w.sum(axis=1)
++        # A missing value has zero weight, and sum() skips it: nothing is filled in.
++        mean = values.mul(weights[values.columns], axis=1).sum(axis=1, min_count=1) / coverage.where(coverage > 0)
++        out[col] = mean.where(coverage >= MIN_WEIGHT_COVERAGE - 1e-9)
++        out[f"{col}_coverage"] = coverage
++    return pd.DataFrame(out, index=index)
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/qa.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/qa.py
+new file mode 100644
+index 0000000..4768d6a
+--- /dev/null
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/qa.py
+@@ -0,0 +1,197 @@
++"""Weekly windows: facts, prompts, targets and rationales for the three tasks of each window.
++
++A window is one ISO week, Monday 00:00 to Sunday 24:00 Swiss civil time (167, 168 or 169 hours).
++Its split is the split of the year that holds its Thursday, as ISO weeks are numbered.
++
++Tasks per window:
++  * anomaly_cause (classification): the cause of the largest anomaly, or "none".
++  * anomaly_days (temporal localization, exhaustive): the anomalous days; possibly none.
++  * exchange (answer): net importer or exporter, and through which borders.
++"""
++
++import json
++
++import numpy as np
++import pandas as pd
++
++from . import rationales
++from .anomalies import Z_THRESHOLD
++from .baseline import PARTIAL_HOLIDAY_SHARE, split_of_year
++from .timefields import field
++
++
++BORDERS = {"at": "Austria", "de": "Germany", "fr": "France", "it": "Italy"}
++
++ANOMALY_SIGNALS = ("load_enduser_mw", "temp_c", "radiation_wm2")
++EXCHANGE_SIGNALS = ("net_import_at_mw", "net_import_de_mw", "net_import_fr_mw", "net_import_it_mw",
++                    "production_mw", "load_total_mw")  # fmt: skip
++
++
++def iso_weeks(days: pd.DataFrame) -> list[pd.DatetimeIndex]:
++    """Complete ISO weeks (seven local days present) of the daily frame."""
++    mondays = days.index[field(days.index, "day_of_week") == 0]
++    weeks = []
++    for m in mondays:
++        span = pd.date_range(m, periods=7, freq="D")
++        if span.isin(days.index).all():
++            weeks.append(span)
++    return weeks
++
++
++def rolling_weeks(days: pd.DataFrame, split: str) -> list[pd.DatetimeIndex]:
++    """Seven-day windows starting on every day, kept only when all seven days belong to ``split``.
++
++    Used to augment the train split. A window never reaches into another split's days.
++
++    Returns:
++        The windows, in time order.
++    """
++    inside = days.index[days.split == split]
++    weeks = []
++    for start in inside:
++        span = pd.date_range(start, periods=7, freq="D")
++        if span.isin(inside).all():
++            weeks.append(span)
++    return weeks
++
++
++def _window_id(week: pd.DatetimeIndex) -> str:
++    if week[0].day_of_week == 0:
++        iso = week[0].isocalendar()
++        return f"{iso.year}-W{iso.week:02d}"
++    return f"{week[0].date()}+7d"
++
++
++def _day_facts(row: pd.Series, date: pd.Timestamp) -> dict:
++    f = {
++        "date": str(date.date()),
++        "day": rationales.day_name(date),
++        "load": rationales.mw(row.load_mw),
++        "exp": rationales.mw(row.expected_mw),
++        "pct": rationales.pct(row.rel_dev),
++        "dir": "below" if row.rel_dev < 0 else "above",
++        "z": rationales.one(row.z),
++        "is_anomaly": bool(row.is_anomaly),
++        "cause": row.cause if row.is_anomaly else "none",
++    }
++    if row.holiday_pop_share >= PARTIAL_HOLIDAY_SHARE:
++        f["holiday"] = row.holiday_name
++        f["share"] = rationales.one(row.holiday_pop_share * 100)
++    return f
++
++
++def window_facts(week: pd.DatetimeIndex, days: pd.DataFrame, hourly: pd.DataFrame) -> dict:
++    d = days.loc[week]
++    h = hourly[hourly.local_date.isin(week)]
++    day_facts = [_day_facts(d.loc[t], t) for t in week]
++    anomalous = [f for f in day_facts if f["is_anomaly"]]
++    largest = max(day_facts, key=lambda f: abs(float(f["z"])))
++    main = max(anomalous, key=lambda f: abs(float(f["z"]))) if anomalous else None
++
++    thursday = week[3]
++    return {
++        "window_id": _window_id(week),
++        "start_local": str(week[0].date()),
++        "end_local": str(week[-1].date()),
++        "split": split_of_year(thursday.year),
++        "n_hours": len(h),
++        "z_threshold": Z_THRESHOLD,
++        "weather": _weather_facts(d),
++        "days": day_facts,
++        "anomalous_days": anomalous,
++        "largest_deviation": {
++            "day": largest["day"],
++            "deviation_pct": largest["pct"],
++            "direction": largest["dir"],
++            "z": largest["z"],
++        },
++        "main_anomaly": main,
++        "label": main["cause"] if main else "none",
++        "exchange": _exchange_facts(h),
++    }
++
++
++def _weather_facts(d: pd.DataFrame) -> dict:
++    temp_anom = float(d.temp_c.mean() - d.temp_normal_c.mean())
++    effect = float(d.weather_effect_mw.mean())
++    return {
++        "temp_mean_c": rationales.one(d.temp_c.mean()),
++        "temp_normal_c": rationales.one(d.temp_normal_c.mean()),
++        "temp_anomaly_abs_c": rationales.one(abs(temp_anom)),
++        "direction": "below" if temp_anom < 0 else "above",
++        "weather_effect_abs_mw": rationales.mw(abs(effect)),
++        "effect_sign": int(np.sign(round(effect))),
++        "radiation_mean_wm2": rationales.mw(d.radiation_wm2.mean()),
++    }
++
++
++def _exchange_facts(h: pd.DataFrame) -> dict:
++    net = float(h.net_import_mw.mean())
++    prod, cons = float(h.production_mw.mean()), float(h.load_total_mw.mean())
++    borders = []
++    for code, name in BORDERS.items():
++        v = float(h[f"net_import_{code}_mw"].mean())
++        borders.append({
++            "code": code, "name": name, "net_import_mw_signed": round(v, 1),
++            "net_import_mw": rationales.mw(max(v, 0.0)), "net_export_mw": rationales.mw(max(-v, 0.0)),
++        })  # fmt: skip
++    return {
++        "role": "importer" if net > 0 else "exporter",
++        "net_import_mw": rationales.mw(net),
++        "net_flow_abs_mw": rationales.mw(abs(net)),
++        "net_flow_noun": "imports" if net > 0 else "exports",
++        "import_hours_pct": rationales.one(100 * float((h.net_import_mw > 0).mean())),
++        "production_mw": rationales.mw(prod),
++        "consumption_mw": rationales.mw(cons),
++        "production_short": cons > prod,
++        "gap_mw": rationales.mw(abs(cons - prod)),
++        "borders": borders,
++    }
++
++
++def calendar_context(facts: dict) -> str:
++    hol = [f"{d['day']}: {d['holiday']} (public holiday for {d['share']}% of the population)"
++           for d in facts["days"] if "holiday" in d]  # fmt: skip
++    return "Public holidays this week: " + ("; ".join(hol) if hol else "none") + "."
++
++
++def prompts(facts: dict) -> dict[str, str]:
++    start = rationales.day_name(pd.Timestamp(facts["start_local"]))
++    end = rationales.day_name(pd.Timestamp(facts["end_local"]))
++    head = f"Hourly data for Switzerland from {start} to {end} (Swiss local time)."
++    cal = calendar_context(facts)
++    anomaly_inputs = ("The series are end-user electricity consumption (MW), population-weighted air "
++                      "temperature (°C) and global solar radiation (W/m²).")  # fmt: skip
++    return {
++        "anomaly_cause": f"{head} {anomaly_inputs} {cal} Did consumption deviate from what the weekday, "
++        "weather and season predict? Explain, then name the cause of the largest deviation.",
++        "anomaly_days": f"{head} {anomaly_inputs} {cal} Which days of this week had abnormal "
++        "consumption, given the weekday, weather and season?",
++        "exchange": f"{head} The series are net imports from Austria, Germany, France and Italy (MW, "
++        "positive means import into Switzerland), Swiss production and total consumption (MW). Was "
++        "Switzerland a net importer or exporter of electricity this week, and through which borders?",
++    }
++
++
++def build_window(facts: dict) -> dict:
++    key = facts["window_id"]
++    texts = {
++        "anomaly_cause": rationales.anomaly_rationale(facts, key),
++        "anomaly_days": rationales.localization_rationale(facts, key),
++        "exchange": rationales.exchange_rationale(facts, key),
++    }
++    facts_text = json.dumps(facts, ensure_ascii=False)
++    for name, text in texts.items():
++        bad = rationales.check_numbers(text, facts_text)
++        if bad:
++            raise ValueError(f"{key} {name}: numbers not in the facts: {sorted(bad)}\n{text}")
++    return {
++        "window_id": key,
++        "split": facts["split"],
++        "label": facts["label"],
++        "anomalous_dates": [d["date"] for d in facts["anomalous_days"]],
++        "exchange_answer": f"net {facts['exchange']['role']}",
++        "prompts": prompts(facts),
++        "rationales": texts,
++        "facts": facts,
++    }
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/rationales.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/rationales.py
+new file mode 100644
+index 0000000..a17013a
+--- /dev/null
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/rationales.py
+@@ -0,0 +1,175 @@
++"""Turn computed facts into rationale text, and check that the text invents no number.
++
++The text comes from fixed templates. A seeded random choice among equivalent phrasings, keyed by
++the window id, varies the wording without changing any fact, so a rebuild gives the same text.
++An LLM may later rephrase these rationales; ``check_numbers`` is the gate any rewrite must pass.
++"""
++
++import random
++import re
++
++
++_NUMBER = re.compile(r"(?<![\w.\-])-?\d[\d,]*(?:\.\d+)?")
++"""A number not glued to a word, so "COVID-19" holds none and "z = -3.5" holds -3.5."""
++WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
++MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August", "September",
++          "October", "November", "December")  # fmt: skip
++
++
++def mw(x: float) -> str:
++    return f"{x:,.0f}"
++
++
++def pct(x: float) -> str:
++    return f"{abs(x) * 100:.1f}"
++
++
++def one(x: float) -> str:
++    return f"{x:.1f}"
++
++
++def day_name(date) -> str:
++    return f"{WEEKDAYS[date.day_of_week]} {date.day} {MONTHS[date.month - 1]} {date.year}"
++
++
++def numbers_in(text: str) -> set[str]:
++    return {n.replace(",", "") for n in _NUMBER.findall(text)}
++
++
++def check_numbers(text: str, facts_text: str) -> set[str]:
++    """Numbers of ``text`` that do not appear in ``facts_text``. Empty means the text is grounded."""
++    allowed = numbers_in(facts_text)
++    # Strip a leading minus: the templates write "12.3% below", the facts store the signed value.
++    allowed |= {a.lstrip("-") for a in allowed}
++    return {n for n in numbers_in(text) if n.lstrip("-") not in allowed}
++
++
++class Phrasing:
++    def __init__(self, key: str):
++        # Seeded for a reproducible choice of wording, not for security.
++        self.rng = random.Random(key)  # ruff: ignore[suspicious-non-cryptographic-random-usage]
++
++    def pick(self, *options: str) -> str:
++        return self.rng.choice(options)
++
++
++CAUSE_CLAUSE = {
++    "public_holiday": "{day} was {holiday}, a public holiday for {share}% of the population",
++    "bridge_day": "{day} was a bridge day between a public holiday and the weekend",
++    "christmas_newyear": "{day} falls in the Christmas and New Year holiday period",
++    "summer_holidays": "{day} falls in the core summer holiday weeks, when the school holidays of "
++    "nearly all cantons overlap",
++    "covid_lockdown": "{day} falls in the COVID-19 lockdown of spring 2020",
++    "cold_snap": "{day} was unusually cold",
++    "heatwave": "{day} was unusually hot",
++    "unexplained": "no calendar or weather rule explains {day}",
++}
++CAUSE_SUMMARY = {
++    "public_holiday": "a public holiday",
++    "bridge_day": "a bridge day",
++    "christmas_newyear": "the Christmas and New Year holiday period",
++    "summer_holidays": "the summer holidays",
++    "covid_lockdown": "the COVID-19 lockdown",
++    "cold_snap": "a cold snap",
++    "heatwave": "a heatwave",
++    "unexplained": "no known cause",
++}
++
++
++def anomaly_rationale(facts: dict, key: str) -> str:
++    """Rationale of the cause classification and the localization task of one window."""
++    p = Phrasing(key + "/anomaly")
++    w = facts["weather"]
++    parts = [
++        p.pick(
++            "The expected consumption follows from the weekday profile, the temperature and the solar radiation.",
++            "I compare each day with the consumption expected from its weekday, temperature and solar radiation.",
++            "Each day is compared with what its weekday, weather and season predict.",
++        ),
++        p.pick(
++            "The week averaged {t} °C, {a} °C {dir} the seasonal normal, which {verb} expected consumption by about {e} MW.",
++            "Temperatures averaged {t} °C, {a} °C {dir} normal for the season; this {verb} the expected load by roughly {e} MW.",
++        ).format(
++            t=w["temp_mean_c"],
++            a=w["temp_anomaly_abs_c"],
++            dir=w["direction"],
++            verb="raises" if w["effect_sign"] > 0 else "lowers",
++            e=w["weather_effect_abs_mw"],
++        ),
++    ]
++    days = facts["anomalous_days"]
++    if not days:
++        lg = facts["largest_deviation"]
++        parts.append(
++            p.pick(
++                "No day leaves the normal range: the largest deviation is {pct}% {dir} expectation on {day} (z = {z}).",
++                "Every day stays within the normal range; the largest gap is {pct}% {dir} expectation, on {day} (z = {z}).",
++            ).format(pct=lg["deviation_pct"], dir=lg["direction"], day=lg["day"], z=lg["z"])
++        )
++        parts.append("No anomaly. Answer: none")
++        return " ".join(parts)
++
++    for d in days:
++        parts.append(
++            p.pick(
++                "On {day}, consumption averaged {load} MW, {pct}% {dir} the expected {exp} MW (z = {z}).",
++                "{day}: {load} MW against an expected {exp} MW, {pct}% {dir} (z = {z}).",
++            ).format(**d)
++        )
++        clause = CAUSE_CLAUSE[d["cause"]].format(day=d["day"], holiday=d.get("holiday", ""), share=d.get("share", ""))
++        parts.append(clause[0].upper() + clause[1:] + ".")
++    main = facts["main_anomaly"]
++    parts.append(
++        p.pick(
++            "The largest deviation, on {day}, is explained by {why}. Answer: {label}",
++            "The strongest anomaly ({day}) is due to {why}. Answer: {label}",
++        ).format(day=main["day"], why=CAUSE_SUMMARY[main["cause"]], label=main["cause"])
++    )
++    return " ".join(parts)
++
++
++def localization_rationale(facts: dict, key: str) -> str:
++    p = Phrasing(key + "/localization")
++    days = facts["anomalous_days"]
++    if not days:
++        return (
++            p.pick(
++                "Every day of the window stays within the normal range of the weather- and calendar-adjusted expectation.",
++                "No day of this window deviates enough from its expected consumption to count as anomalous.",
++            )
++            + " Answer: none"
++        )
++    listed = "; ".join(f"{d['day']} ({d['pct']}% {d['dir']} expectation, z = {d['z']})" for d in days)
++    text = p.pick("Anomalous days: {l}.", "The days that deviate from the expectation are: {l}.").format(l=listed)
++    return text + " Answer: " + ", ".join(d["date"] for d in days)
++
++
++def exchange_rationale(facts: dict, key: str) -> str:
++    """Rationale and answer of the import/export question."""
++    p = Phrasing(key + "/exchange")
++    x = facts["exchange"]
++    borders = sorted(x["borders"], key=lambda b: b["net_import_mw_signed"], reverse=True)
++    imp = [b for b in borders if b["net_import_mw_signed"] > 0]
++    exp = [b for b in borders if b["net_import_mw_signed"] < 0]
++    parts = [
++        p.pick(
++            "Over the window, Switzerland was a net {role}: net {noun} averaged {net} MW, with net imports in {share}% of the hours.",
++            "Switzerland was a net {role} this window, with average net {noun} of {net} MW; {share}% of the hours were net importing.",
++        ).format(role=x["role"], noun=x["net_flow_noun"], net=x["net_flow_abs_mw"], share=x["import_hours_pct"]),
++        p.pick(
++            "Domestic production averaged {prod} MW against a total consumption of {cons} MW, {gap_txt}.",
++            "Production in the Swiss control block averaged {prod} MW while total consumption averaged {cons} MW, {gap_txt}.",
++        ).format(
++            prod=x["production_mw"],
++            cons=x["consumption_mw"],
++            gap_txt=("a shortfall of {g} MW" if x["production_short"] else "a surplus of {g} MW").format(g=x["gap_mw"]),
++        ),
++    ]
++    if imp:
++        parts.append("Net imports came from " + ", ".join(f"{b['name']} ({b['net_import_mw']} MW)" for b in imp) + ".")
++    if exp:
++        parts.append(
++            "Net exports went to " + ", ".join(f"{b['name']} ({b['net_export_mw']} MW)" for b in reversed(exp)) + "."
++        )
++    parts.append(f"Answer: net {x['role']}")
++    return " ".join(parts)
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/run.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/run.py
+new file mode 100644
+index 0000000..0442429
+--- /dev/null
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/run.py
+@@ -0,0 +1,35 @@
++"""Run the whole annotation on an hourly table. No file or network access."""
++
++from dataclasses import dataclass
++
++import pandas as pd
++
++from .anomalies import ResidualScale, score_days
++from .baseline import Baseline, daily_frame, fit_baseline
++from .causes import attribute, weather_effect
++from .qa import build_window, iso_weeks, window_facts
++
++
++@dataclass(frozen=True)
++class Annotation:
++    """The scored days, the fitted model and the weekly windows."""
++
++    days: pd.DataFrame
++    baseline: Baseline
++    scale: ResidualScale
++    windows: list[dict]
++
++
++def annotate(hourly: pd.DataFrame) -> Annotation:
++    """Fit the baseline on train years, score and attribute every day, and build the weekly windows.
++
++    Returns:
++        The annotation.
++    """
++    days = daily_frame(hourly)
++    baseline = fit_baseline(days)
++    scored, scale = score_days(days, baseline)
++    scored = attribute(scored)
++    scored["weather_effect_mw"] = weather_effect(scored, baseline)
++    windows = [build_window(window_facts(week, scored, hourly)) for week in iso_weeks(scored)]
++    return Annotation(days=scored, baseline=baseline, scale=scale, windows=windows)
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/stations.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/stations.py
+new file mode 100644
+index 0000000..b9dfaef
+--- /dev/null
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/stations.py
+@@ -0,0 +1,27 @@
++"""The SwissMetNet stations of the national weather series and the population that weights them."""
++
++STATION_CANTONS: dict[str, tuple[str, ...]] = {
++    "SMA": ("ZH", "SH"),  # Zürich / Fluntern
++    "BUS": ("AG", "SO"),  # Buchs / Aarau
++    "BAS": ("BS", "BL", "JU"),  # Basel / Binningen
++    "BER": ("BE", "FR"),  # Bern / Zollikofen
++    "NEU": ("NE",),  # Neuchâtel
++    "PUY": ("VD",),  # Pully (Lausanne)
++    "GVE": ("GE",),  # Genève / Cointrin
++    "LUZ": ("LU", "ZG", "SZ", "OW", "NW", "UR"),  # Luzern
++    "STG": ("SG", "AR", "AI", "TG"),  # St. Gallen
++    "CHU": ("GR", "GL"),  # Chur
++    "SIO": ("VS",),  # Sion
++    "LUG": ("TI",),  # Lugano
++}
++"""Each station stands for the cantons listed with it."""
++
++CANTON_POPULATION_2023: dict[str, int] = {
++    "ZH": 1605508, "BE": 1063533, "LU": 432744, "UR": 37931, "SZ": 167403, "OW": 39272,
++    "NW": 45016, "GL": 42056, "ZG": 132556, "FR": 341537, "SO": 286844, "BS": 200031,
++    "BL": 298837, "SH": 87111, "AR": 56495, "AI": 16585, "SG": 535114, "GR": 204888,
++    "AG": 726894, "TG": 295220, "TI": 357720, "VD": 845870, "VS": 365844, "NE": 178291,
++    "GE": 524410, "JU": 74548,
++}  # fmt: skip
++"""Permanent resident population per canton at the end of 2023, Swiss Federal Statistical Office
++(BFS) STATPOP, table px-x-0102010000_101. A test checks these values against the downloaded table."""
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/swissgrid.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/swissgrid.py
+new file mode 100644
+index 0000000..87cf55f
+--- /dev/null
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/swissgrid.py
+@@ -0,0 +1,196 @@
++r"""Parse the Swissgrid "Energy Statistic Switzerland" yearly workbooks.
++
++Facts this module relies on, all checked on the real files (see docs/phase1_exploration.md):
++
++* Sheet ``Zeitreihen0h15``. Row 1 holds bilingual headers ("German\nEnglish"), row 2 the units,
++  and then one row per quarter hour follows. Energies are in kWh per quarter hour.
++* Timestamps are Swiss civil time (Europe/Zurich). On the spring-forward day the 02:xx labels are
++  missing. On the fall-back day the four 02:xx labels appear twice, CEST first.
++* Each label marks the END of its quarter hour in 2020-2024 (``01.01. 00:15`` ...
++  ``01.01.(Y+1) 00:00``), and its START in 2025 (``01.01. 00:00`` ... ``31.12. 23:45``). The
++  convention is detected from the first label of each file, never assumed.
++* 2020 stores Excel datetimes. 2021-2025 store strings ``dd.mm.yyyy HH:MM``.
++"""
++
++from datetime import datetime
++from enum import Enum
++from pathlib import Path
++
++import numpy as np
++import pandas as pd
++
++from .timefields import floor_hour
++
++
++TZ = "Europe/Zurich"
++QUARTER = pd.Timedelta("15min")
++QUARTERS_PER_HOUR = 4
++SHEET = "Zeitreihen0h15"
++
++# English header part -> output column name. Only these columns are read.
++COLUMNS = {
++    "Total energy consumed by end users in the Swiss controlblock": "load_enduser",
++    "Total energy consumption Swiss controlblock": "load_total",
++    "Total energy production Swiss controlblock": "production",
++    "Cross Border Exchange CH->AT": "exp_at",
++    "Cross Border Exchange AT->CH": "imp_at",
++    "Cross Border Exchange CH->DE": "exp_de",
++    "Cross Border Exchange DE->CH": "imp_de",
++    "Cross Border Exchange CH->FR": "exp_fr",
++    "Cross Border Exchange FR->CH": "imp_fr",
++    "Cross Border Exchange CH->IT": "exp_it",
++    "Cross Border Exchange IT->CH": "imp_it",
++    "Transit": "transit",
++    "Import": "import",
++    "Export": "export",
++}
++BORDERS = ("at", "de", "fr", "it")
++
++
++class SwissgridFormatError(ValueError):
++    """The workbook does not have the shape this parser was written for."""
++
++
++class LabelConvention(Enum):
++    PERIOD_END = "end"
++    PERIOD_START = "start"
++
++
++def detect_convention(first_label: pd.Timestamp, year: int) -> LabelConvention:
++    """Tell the label convention of a year from its first label.
++
++    Returns:
++        PERIOD_END if the year starts at 00:15, PERIOD_START if it starts at 00:00.
++
++    Raises:
++        SwissgridFormatError: If the first label is neither.
++    """
++    if first_label == pd.Timestamp(year, 1, 1, 0, 15):
++        return LabelConvention.PERIOD_END
++    if first_label == pd.Timestamp(year, 1, 1, 0, 0):
++        return LabelConvention.PERIOD_START
++    raise SwissgridFormatError(f"{year}: first label {first_label} is neither 00:00 nor 00:15 on 1 January")
++
++
++def parse_labels(raw: pd.Series) -> pd.Series:
++    """Turn the timestamp column (strings or datetimes) into naive local Timestamps.
++
++    Returns:
++        The labels as naive Timestamps, indexed from 0.
++
++    Raises:
++        SwissgridFormatError: If the column mixes types or a label is off the 15-minute grid.
++    """
++    if all(isinstance(v, datetime) for v in raw):
++        labels = pd.to_datetime(raw)
++    elif all(isinstance(v, str) for v in raw):
++        labels = pd.to_datetime(raw, format="%d.%m.%Y %H:%M")
++    else:
++        kinds = sorted({type(v).__name__ for v in raw})
++        raise SwissgridFormatError(f"timestamp column mixes types {kinds}")
++    # Excel datetimes can carry float noise. A label must be on a whole quarter hour.
++    off_grid = labels[labels != labels.dt.round("15min")]
++    if len(off_grid):
++        raise SwissgridFormatError(f"{len(off_grid)} labels are off the 15-minute grid, first {off_grid.iloc[0]}")
++    return labels.reset_index(drop=True)
++
++
++def _wall_clock(instants: pd.DatetimeIndex, *, left: bool) -> pd.DatetimeIndex:
++    """Naive Swiss wall-clock time of each UTC instant.
++
++    With ``left``, use the UTC offset in force just before the instant. An end label at the
++    fall-back instant 01:00 UTC can read 03:00 (CEST, the offset during the quarter it closes),
++    as in 2020, or 02:00 (CET), as in 2021-2024. Both are correct renderings of the same instant.
++
++    Returns:
++        The naive wall-clock times.
++    """
++    probe = instants - pd.Timedelta("1us") if left else instants
++    offsets = pd.to_timedelta([t.utcoffset() for t in probe.tz_convert(TZ)])
++    return (instants.tz_localize(None) + offsets).as_unit("us")
++
++
++def labels_to_utc_start(labels: pd.Series, year: int) -> pd.DatetimeIndex:
++    """Map naive local labels to the UTC start of each quarter hour, and check the whole year is there.
++
++    The rows are taken as consecutive quarter hours from 1 January 00:00 local time. Each label is
++    then checked against the wall-clock reading of its instant, so a missing, extra or shuffled
++    row shifts every later label and fails the check. Repeated fall-back labels need no guessing.
++
++    Returns:
++        The UTC start of each quarter hour, in row order.
++
++    Raises:
++        SwissgridFormatError: If the row count or any label does not match a complete year.
++    """
++    convention = detect_convention(labels.iloc[0], year)
++    expected = pd.date_range(
++        pd.Timestamp(year, 1, 1).tz_localize(TZ).tz_convert("UTC"),
++        pd.Timestamp(year + 1, 1, 1).tz_localize(TZ).tz_convert("UTC"),
++        freq=QUARTER,
++        inclusive="left",
++    )
++    if len(labels) != len(expected):
++        raise SwissgridFormatError(f"{year}: {len(labels)} rows, a complete year has {len(expected)} quarter hours")
++    labelled = expected + QUARTER if convention is LabelConvention.PERIOD_END else expected
++    lab = pd.DatetimeIndex(labels).as_unit("us")
++    ok = (lab == _wall_clock(labelled, left=False)) | (lab == _wall_clock(labelled, left=True))
++    if not ok.all():
++        i = int(np.argmin(ok))
++        raise SwissgridFormatError(
++            f"{year}: row {i} is labelled {lab[i]}, but the quarter hour at that position "
++            f"({convention.value} label {labelled[i]}) reads {_wall_clock(labelled[i : i + 1], left=False)[0]} locally"
++        )
++    return expected.rename("utc_start")
++
++
++def read_year(path: Path, year: int) -> pd.DataFrame:
++    """Read one workbook into a frame indexed by the UTC start of each quarter hour, values in kWh."""
++    header = pd.read_excel(path, sheet_name=SHEET, header=None, nrows=2, engine="openpyxl")
++    english = [str(h).split("\n")[-1].strip() for h in header.iloc[0]]
++    units = list(header.iloc[1])
++    positions = {}
++    for name, out in COLUMNS.items():
++        hits = [i for i, h in enumerate(english) if h == name]
++        if len(hits) != 1:
++            raise SwissgridFormatError(f"{path.name}: header {name!r} found {len(hits)} times")
++        if units[hits[0]] != "kWh":
++            raise SwissgridFormatError(f"{path.name}: {name!r} is in {units[hits[0]]!r}, expected kWh")
++        positions[out] = hits[0]
++    # read_excel returns usecols in sheet order, whatever order they are passed in.
++    positions = dict(sorted(positions.items(), key=lambda kv: kv[1]))
++
++    data = pd.read_excel(
++        path, sheet_name=SHEET, header=None, skiprows=2, usecols=[0, *positions.values()], engine="openpyxl"
++    )
++    data.columns = ["label", *positions.keys()]
++    index = labels_to_utc_start(parse_labels(data["label"]), year)
++    frame = data.drop(columns="label").set_index(index).rename_axis("utc_start")
++    if frame.isna().any().any():
++        raise SwissgridFormatError(f"{path.name}: null values in {frame.columns[frame.isna().any()].tolist()}")
++    return frame.astype("float64")
++
++
++def to_hourly_mw(quarters: pd.DataFrame) -> pd.DataFrame:
++    """Sum four quarter hours per UTC hour, kWh -> MWh, which is the hour's mean power in MW.
++
++    Swiss civil time is UTC+1 or UTC+2, so UTC hours are also whole local hours.
++
++    Returns:
++        One row per UTC hour, in MW, with the net import per border and in total.
++
++    Raises:
++        SwissgridFormatError: If an hour does not hold exactly four quarter hours.
++    """
++    hour = floor_hour(quarters.index)
++    counts = quarters.groupby(hour).size()
++    incomplete = counts[counts != QUARTERS_PER_HOUR]
++    if len(incomplete):
++        raise SwissgridFormatError(f"hours without four quarters: {incomplete.index[:3].tolist()}")
++    hourly = quarters.groupby(hour).sum() / 1000.0
++    hourly.index.name = "utc_start"
++    out = hourly.add_suffix("_mw")
++    for b in BORDERS:
++        out[f"net_import_{b}_mw"] = out[f"imp_{b}_mw"] - out[f"exp_{b}_mw"]
++    out["net_import_mw"] = out[[f"net_import_{b}_mw" for b in BORDERS]].sum(axis=1)
++    return out
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/timefields.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/timefields.py
+new file mode 100644
+index 0000000..aaa5a4a
+--- /dev/null
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/timefields.py
+@@ -0,0 +1,41 @@
++"""Calendar fields of a pandas DatetimeIndex, read through one typed helper.
++
++pandas generates ``DatetimeIndex.month`` and its siblings at runtime, so a static type checker cannot
++see them. Reading them here keeps the rest of the code free of type-checker suppressions.
++"""
++
++from operator import methodcaller
++
++import numpy as np
++import pandas as pd
++
++
++def field(index: pd.Index, name: str) -> np.ndarray:
++    """Read one calendar field of a DatetimeIndex.
++
++    Args:
++        index: A DatetimeIndex.
++        name: ``year``, ``month``, ``day``, ``hour``, ``day_of_week`` or ``day_of_year``.
++
++    Returns:
++        The field, one integer per entry of the index.
++    """
++    return np.asarray(getattr(pd.DatetimeIndex(index), name))
++
++
++def floor_hour(index: pd.Index) -> pd.DatetimeIndex:
++    """Round each timestamp of a DatetimeIndex down to its hour.
++
++    Returns:
++        The rounded index.
++    """
++    return pd.DatetimeIndex(methodcaller("floor", "h")(pd.DatetimeIndex(index)))
++
++
++def normalize(index: pd.Index) -> pd.DatetimeIndex:
++    """Set each timestamp of a DatetimeIndex to midnight of its day.
++
++    Returns:
++        The normalized index.
++    """
++    return pd.DatetimeIndex(methodcaller("normalize")(pd.DatetimeIndex(index)))
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/connector.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/connector.py
+new file mode 100644
+index 0000000..30f17b6
+--- /dev/null
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/connector.py
+@@ -0,0 +1,275 @@
++"""The Swiss Grid Anomaly-CoT connector: weekly Swiss power and weather windows with explained anomalies.
++
++The connector downloads six yearly Swissgrid workbooks (2020-2025, quarter-hourly) and the hourly files
++of twelve SwissMetNet stations, and recomputes every label in ``convert``. Nothing in the dataset comes
++from a model: a linear baseline fitted on 2020-2023 gives the expected daily consumption, a robust
++z-score flags the anomalous days, ordered calendar and weather rules give each one a cause, and fixed
++templates write the rationales from the computed facts. See ``_pipeline`` for each step.
++
++Each ISO week becomes one Record with eight hourly signals and three tasks: the cause of the largest
++anomaly (classification), the anomalous days (temporal localization) and the net import/export
++question (answer).
++"""
++
++from dataclasses import dataclass
++from fractions import Fraction
++import json
++from pathlib import Path
++
++import pandas as pd
++
++from timenet.connectors import BaseConnector
++from timenet.dataset import Record, Signal, Source, TimeFDataset
++from timenet.dataset.axis import RegularAxis
++from timenet.types import (
++    Annotation,
++    AnswerTask,
++    ClassificationTask,
++    Label,
++    LabelSet,
++    LocalizationMode,
++    Split,
++    TemporalLocalizationTask,
++    TimeInterval,
++    TimeOrigin,
++    TimeSeriesSpec,
++    ureg,
++)
++from timenet_connectors.download import Artifact, download_files
++
++from ._pipeline import causes, meteoswiss, swissgrid
++from ._pipeline.assemble import hourly_dataset
++from ._pipeline.run import annotate
++from ._pipeline.stations import STATION_CANTONS
++
++
++SWISSGRID_PAGE = "https://www.swissgrid.ch/en/home/customers/topics/energy-data-ch.html"
++_SWISSGRID = {
++    2020: ("a6deeecb-74e8-4d67-a8ad-8c53c9dfbdd3", "9ccbe5bff13b44a7436555b70c1a21b0a9e3f879b9ea423ec5fb16c7dd5ed7bc"),
++    2021: ("26fa6b22-5e81-44eb-abbd-4280c59c3697", "ef940de1ecd58ddd51252f40ac07c80bb7abfee468ea353fefb94931e60ec9b6"),
++    2022: ("e3af783a-6c00-40d9-bb3e-a630fb492dfb", "0922fbf418cbaae533d37cfb25f09b7afe637ebdbdb83328bb886c2857368267"),
++    2023: ("32576046-3686-4a62-bc32-9b55a89a2142", "b86e0fab5834726a28545bd91dfeba279d751ad34ce2bf33cae0edb52117f0e7"),
++    2024: ("4d4ca899-395d-4d3d-9958-5ace16ecbfbf", "3944594e167e6a50762e7c30ad81b3209fc2e9b719a36a9321b477bbaccf8605"),
++    2025: ("bbbbadc6-3656-4dfe-b81e-bbb9ad01be79", "48ba9c57086fc0f00c96ba5cf7f449b0f51fd098451783bc4f3c36628a2944de"),
++}
++"""Year -> (Swissgrid DAM id, SHA-256). Swissgrid re-publishes revised files, so a new digest is a new
++dataset version, never a silent change."""
++_SMN = "https://data.geo.admin.ch/ch.meteoschweiz.ogd-smn"
++_STATION_SHA256 = {
++    "BAS": "19d5ef8c633b31e586f0090f80f0571d23664ed0afa80b33b92e73ad9104090b",
++    "BER": "efb0decf622589e2fdfbc0121c7026ceb18c9e15c7c1d5bb3217ecba15c79c24",
++    "BUS": "9b95d63d069ae1ec78a864bba33f17e755a4c85741146529993b682e916e9428",
++    "CHU": "cb6a33ce054705ae5a960d606b20336ccbcc0328878cfa9d8d1fcfbde4250cbf",
++    "GVE": "0e51543ce10dbbf9561ffce0f0bd1308b54e9b2c483dea7ad2879828e24b3d84",
++    "LUG": "ef92692a77655d355625be23066a80a0869a83f161e0cf8b8f9c4dddd9038834",
++    "LUZ": "d91c62b800c1c2b727cff59b15e13b5dcf1fdb4d4a6acd0e857b14cffdccbf32",
++    "NEU": "7ac287a49d964dcbf3b967e075012c8ffca9407cb562348e404bb58f4e7ba79e",
++    "PUY": "13004d355300956a934ab6ecfa44f858209615a9034c48a0cf77f05975785f03",
++    "SIO": "e81934655d96dbf74e0db708aee0fdc5ef5c686f51a64e2efec4cf7852b655fe",
++    "SMA": "17fee315d2bb8b90815b6c9627825e135a2b5de64c7776756e53c4433f8c8906",
++    "STG": "82bf289106cc7e170c1383930cc1108bf454f775e956e183baa496662fa63d7d",
++}
++"""SHA-256 of each station's ``h_historical_2020-2029`` file. MeteoSwiss rewrites that file once a year."""
++
++HOURLY = RegularAxis.from_rate_hz(Fraction(1, 3600))
++US_PER_HOUR = 3_600_000_000
++POWER = TimeSeriesSpec(spec_type="electric_power", name="Electric power", unit_value=ureg.megawatt, dtype="float64")
++TEMPERATURE = TimeSeriesSpec(
++    spec_type="air_temperature", name="Air temperature 2 m", unit_value=ureg.degC, dtype="float64"
++)
++RADIATION = TimeSeriesSpec(
++    spec_type="global_radiation", name="Global radiation", unit_value=ureg.watt / ureg.meter**2, dtype="float64"
++)
++GRID_SIGNALS = {
++    "load_enduser_mw": "End-user consumption",
++    "load_total_mw": "Total consumption",
++    "production_mw": "Production",
++    "net_import_at_mw": "Net import from Austria",
++    "net_import_de_mw": "Net import from Germany",
++    "net_import_fr_mw": "Net import from France",
++    "net_import_it_mw": "Net import from Italy",
++}
++"""Column -> signal name of the Swissgrid source. Every value is an hourly mean in MW."""
++WEATHER_SIGNALS = {"temp_c": ("Temperature", TEMPERATURE), "radiation_wm2": ("Global radiation", RADIATION)}
++CAUSE = LabelSet(
++    name="anomaly_cause",
++    labels=tuple(Label(name=name, description=causes.CAUSE_DESCRIPTIONS[name]) for name in causes.CAUSES),
++)
++SPLITS = {"train": Split.TRAIN, "validation": Split.VALIDATION, "test": Split.TEST}
++
++
++@dataclass(frozen=True)
++class RawFiles:
++    """The paths of the downloaded source files."""
++
++    swissgrid: dict[int, Path]
++    stations: dict[str, Path]
++
++    def read_hourly(self) -> pd.DataFrame:
++        """Parse every source file into the aligned hourly national table.
++
++        Returns:
++            One row per UTC hour, 2020-2025.
++        """
++        quarters = pd.concat([swissgrid.read_year(path, year) for year, path in sorted(self.swissgrid.items())])
++        stations = {code: meteoswiss.read_station(path, code) for code, path in self.stations.items()}
++        return hourly_dataset(quarters, stations)
++
++
++def _signals(window: pd.DataFrame) -> tuple[Source, Source]:
++    grid = tuple(
++        Signal.from_values(window[column].to_numpy(), spec=POWER, name=name, time_axis=HOURLY)
++        for column, name in GRID_SIGNALS.items()
++    )
++    weather = tuple(
++        Signal.from_values(window[column].to_numpy(), spec=spec, name=name, time_axis=HOURLY)
++        for column, (name, spec) in WEATHER_SIGNALS.items()
++    )
++    return (
++        Source(name="Swissgrid, Swiss control block", signals=grid),
++        Source(name="MeteoSwiss SwissMetNet, population-weighted mean of 12 stations", signals=weather),
++    )
++
++
++def _day_interval(window: pd.DataFrame, date: str, signals: tuple[Signal, ...] | None) -> TimeInterval:
++    """The hours of one local day, as an interval of the window's record."""
++    hours = (window.local_date == pd.Timestamp(date)).to_numpy().nonzero()[0]
++    return TimeInterval.micros(int(hours[0]) * US_PER_HOUR, (int(hours[-1]) + 1) * US_PER_HOUR, time_series=signals)
++
++
++def add_window(dataset: TimeFDataset, window: pd.DataFrame, item: dict) -> None:
++    """Add one week's Record and its three tasks to the dataset.
++
++    Args:
++        dataset: The dataset under construction.
++        window: The hourly rows of the week, in time order.
++        item: The week's facts, prompts and rationales from the pipeline.
++    """
++    facts = item["facts"]
++    grid, weather = _signals(window)
++    record = dataset.add_record(
++        record=Record(
++            sources=(grid, weather),
++            start_time=TimeOrigin(window.index[0].to_pydatetime()),
++            metadata={"window_id": item["window_id"]},
++        )
++    )
++    load = grid.signals[0]
++    anomaly_inputs = (load, *weather.signals)
++    exchange_inputs = (*grid.signals[3:], grid.signals[2], grid.signals[1])
++    record.add_annotations(
++        [
++            Annotation(key="window_id", value=item["window_id"]),
++            Annotation(key="facts", value=json.dumps(facts, ensure_ascii=False)),
++            *(
++                Annotation(key="public_holiday", value=day["holiday"], span=_day_interval(window, day["date"], None))
++                for day in facts["days"]
++                if "holiday" in day
++            ),
++        ]
++    )
++    # An anomaly concerns the consumption, so it is attached to that signal.
++    for day in facts["anomalous_days"]:
++        load.annotate(Annotation(key="anomaly", value=day["cause"], span=_day_interval(window, day["date"], None)))
++    whole = len(window) * US_PER_HOUR
++    split = SPLITS[item["split"]]
++    dataset.add_tasks(
++        tasks=[
++            ClassificationTask(
++                inputs=(record,),
++                scope=TimeInterval.micros(0, whole, time_series=anomaly_inputs),
++                prompt=item["prompts"]["anomaly_cause"],
++                targets=(item["label"],),
++                label_set=CAUSE,
++                rationale=item["rationales"]["anomaly_cause"],
++                split=split,
++            ),
++            TemporalLocalizationTask(
++                inputs=(record,),
++                scope=TimeInterval.micros(0, whole, time_series=anomaly_inputs),
++                prompt=item["prompts"]["anomaly_days"],
++                targets=tuple(_day_interval(window, date, (load,)) for date in item["anomalous_dates"]),
++                mode=LocalizationMode.EXHAUSTIVE,
++                rationale=item["rationales"]["anomaly_days"],
++                split=split,
++            ),
++            AnswerTask(
++                inputs=(record,),
++                scope=TimeInterval.micros(0, whole, time_series=exchange_inputs),
++                prompt=item["prompts"]["exchange"],
++                targets=(item["exchange_answer"],),
++                rationale=item["rationales"]["exchange"],
++                split=split,
++            ),
++        ]
++    )
++
++
++def build_dataset(dataset: TimeFDataset, hourly: pd.DataFrame) -> TimeFDataset:
++    """Annotate the hourly table and add one Record per ISO week to the dataset.
++
++    Args:
++        dataset: An empty dataset carrying the card's metadata.
++        hourly: The aligned hourly table from :meth:`RawFiles.read_hourly`.
++
++    Returns:
++        The populated dataset.
++    """
++    result = annotate(hourly)
++    for item in result.windows:
++        week = pd.date_range(item["facts"]["start_local"], item["facts"]["end_local"], freq="D")
++        add_window(dataset, hourly[hourly.local_date.isin(week)], item)
++    return dataset
++
++
++class SwissGridAnomalyCotConnector(BaseConnector[RawFiles]):
++    """Connector for the Swiss Grid Anomaly-CoT dataset."""
++
++    async def download_async(self, cache_dir: Path) -> list[RawFiles]:  # ruff: ignore[no-self-use]
++        """Download the six Swissgrid workbooks and the twelve station files, checking each digest.
++
++        Args:
++            cache_dir: Directory for the downloaded files.
++
++        Returns:
++            One reference holding every path.
++        """
++        grid = {
++            year: Artifact(
++                f"https://www.swissgrid.ch/dam/jcr:{dam_id}/EnergieUebersichtCH-{year}.xlsx",
++                cache_dir / f"EnergieUebersichtCH-{year}.xlsx",
++                sha256=digest,
++            )
++            for year, (dam_id, digest) in _SWISSGRID.items()
++        }
++        stations = {
++            code: Artifact(
++                f"{_SMN}/{code.lower()}/ogd-smn_{code.lower()}_h_historical_2020-2029.csv",
++                cache_dir / f"ogd-smn_{code.lower()}_h_historical_2020-2029.csv",
++                sha256=_STATION_SHA256[code],
++            )
++            for code in STATION_CANTONS
++        }
++        paths = await download_files([*grid.values(), *stations.values()])
++        n_grid = len(grid)
++        return [
++            RawFiles(
++                swissgrid=dict(zip(grid, paths[:n_grid], strict=True)),
++                stations=dict(zip(stations, paths[n_grid:], strict=True)),
++            )
++        ]
++
++    def convert(self, raw_refs: list[RawFiles]) -> TimeFDataset:
++        """Parse the sources, recompute every label and build one Record and three tasks per week.
++
++        Args:
++            raw_refs: The reference from :meth:`download_async`.
++
++        Returns:
++            The populated dataset.
++        """
++        (files,) = raw_refs
++        return build_dataset(TimeFDataset(metadata=self.metadata()), files.read_hourly())
++
++
++CONNECTOR = SwissGridAnomalyCotConnector
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/dataset.yaml b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/dataset.yaml
+new file mode 100644
+index 0000000..37d50de
+--- /dev/null
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/dataset.yaml
+@@ -0,0 +1,54 @@
++# yaml-language-server: $schema=https://docs.timenet.ai/schemas/dataset-card-v1.schema.json
++yaml_schema_version: 1
++dataset_id: aionic/swiss-grid-anomaly-cot
++dataset_version: 1.0.0
++name: Swiss Grid Anomaly-CoT
++description: >-
++  312 weekly windows (ISO weeks) of the Swiss electricity system, 2020-2025, each with three tasks
++  and a chain-of-thought rationale: 208 train weeks (2020-2023), 52 validation (2024) and 52 test
++  (2025). Each record holds eight hourly signals: end-user consumption, total consumption,
++  production, and the net import from Austria, Germany, France and Italy, all in MW and summed by
++  the connector from Swissgrid's quarter-hourly energies; plus air temperature and global
++  radiation, each a population-weighted mean of 12 SwissMetNet stations. A week has 168 hours, 167
++  or 169 around a clock change. Swissgrid writes Swiss civil time and changed its labels in 2025
++  from the end to the start of each quarter hour; the connector checks every label and stores UTC.
++
++  No label comes from a model. A linear baseline fitted on the ordinary days of 2020-2023 predicts
++  daily end-user consumption from the weekday, the month, heating and cooling degree days and the
++  solar radiation (MAPE 2.3 % on ordinary days of the 2025 test year). A day is anomalous when its
++  robust z-score is at least 3 in absolute value. Ordered rules then give it a cause: the COVID-19
++  lockdown of spring 2020, the Christmas period (22 December - 6 January), a public holiday of at
++  least 20 % of the population, a bridge day, or the core summer holiday weeks (14 July - 15
++  August). Holidays come from the holidays package (0.108) per canton, weighted by the 2023 BFS
++  population. In 2020-2025 no day lies above expectation at that threshold, so the cold_snap,
++  heatwave and unexplained labels do not occur; each rationale states the weather effect instead.
++
++  Tasks per week: the cause of the largest anomaly or "none" (classification, 9 labels), the
++  anomalous days (exhaustive temporal localization, possibly none), and whether Switzerland was a
++  net importer or exporter and through which borders (answer). Fixed templates write each
++  rationale from the computed facts; a check rejects any number in the text that is not in the
++  facts, which each record keeps as a JSON annotation.
++
++  Licensing: Swissgrid states no license for the Energy Statistic Switzerland files, so this card
++  says NONE and their terms of use are unknown. The weather data is MeteoSwiss Open Government Data
++  under CC BY 4.0 (source: MeteoSwiss). The data is downloaded from the publishers at build time and
++  is not redistributed by TimeNet.
++license: NONE
++source_url: https://www.swissgrid.ch/en/home/customers/topics/energy-data-ch.html
++citation: >-
++  Swissgrid AG, Energy Statistic Switzerland (EnergieUebersichtCH), 2020-2025.
++  MeteoSwiss, SwissMetNet automatic weather stations, Open Government Data, CC BY 4.0,
++  https://data.geo.admin.ch/api/stac/v1/collections/ch.meteoschweiz.ogd-smn.
++  Swiss Federal Statistical Office, STATPOP 2023.
++domains:
++  - energy
++  - environment
++tags:
++  - electricity
++  - load
++  - switzerland
++  - anomaly-explanation
++  - cross-border-exchange
++  - weather
++  - cot
++  - rule-based-supervision
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/requirements.txt b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/requirements.txt
+new file mode 100644
+index 0000000..2931838
+--- /dev/null
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/requirements.txt
+@@ -0,0 +1,6 @@
++# pandas aligns the quarter-hourly, hourly and daily tables and fits nothing beyond numpy's lstsq.
++pandas>=2.2
++# openpyxl reads the Swissgrid .xlsx workbooks.
++openpyxl>=3.1.5
++# holidays gives the cantonal public holidays. Pinned exactly: its holiday data decides labels.
++holidays==0.108
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/tests/__init__.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/tests/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/tests/test_connector.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/tests/test_connector.py
+new file mode 100644
+index 0000000..188ea1a
+--- /dev/null
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/tests/test_connector.py
+@@ -0,0 +1,161 @@
++from datetime import UTC, datetime
++import json
++
++import numpy as np
++import openpyxl
++import pandas as pd
++import pytest
++
++from timenet.dataset import TimeFDataset
++from timenet.reader import TimeFReader
++from timenet.registry import open_local_version
++from timenet.testing import assert_datasets_equal
++from timenet.types import AnswerTask, ClassificationTask, Split, TemporalLocalizationTask
++from timenet.types.text import read_value
++from timenet_connectors.datasets.aionic.swiss_grid_anomaly_cot._pipeline import swissgrid
++from timenet_connectors.datasets.aionic.swiss_grid_anomaly_cot._pipeline.swissgrid import (
++    SwissgridFormatError,
++    labels_to_utc_start,
++    parse_labels,
++)
++from timenet_connectors.datasets.aionic.swiss_grid_anomaly_cot._pipeline.timefields import field, normalize
++from timenet_connectors.datasets.aionic.swiss_grid_anomaly_cot.connector import (
++    CAUSE,
++    GRID_SIGNALS,
++    SwissGridAnomalyCotConnector,
++    build_dataset,
++)
++
++
++TZ = "Europe/Zurich"
++_HOLIDAY = pd.Timestamp("2025-05-29")  # a Thursday of the test year
++
++
++def _hourly() -> pd.DataFrame:
++    """Six years in the shape of the connector's hourly table: a heating response, a weekend dip,
++    noise, and one public holiday with a deep dip in the test year."""
++    rng = np.random.default_rng(7)
++    idx = pd.date_range("2019-12-31 23:00", "2025-12-31 22:00", freq="h", tz="UTC")
++    local = idx.tz_convert(TZ)
++    date = normalize(local.tz_localize(None))
++    temp = 10 - 10 * np.cos(2 * np.pi * (field(local, "day_of_year") - 15) / 365) + rng.normal(0, 2, len(idx))
++    weekend = field(local, "day_of_week") >= 5
++    load = 6000 + 60 * np.maximum(0, 16 - temp) - 900 * weekend + rng.normal(0, 60, len(idx))
++    holiday = date == _HOLIDAY
++    load = np.where(holiday, load * 0.75, load)
++    df = pd.DataFrame(index=idx)
++    df["load_enduser_mw"] = load
++    df["load_total_mw"] = load + 700
++    df["production_mw"] = load + 900
++    for border, value in {"at": 100.0, "de": 300.0, "fr": 400.0, "it": -1000.0}.items():
++        df[f"net_import_{border}_mw"] = value
++    df["net_import_mw"] = -200.0
++    df["temp_c"] = temp
++    df["radiation_wm2"] = 150.0
++    df["local_date"] = date
++    df["local_hour"] = field(local, "hour")
++    df["dow"] = field(local, "day_of_week")
++    df["holiday_pop_share"] = np.where(holiday, 1.0, 0.0)
++    df["holiday_name"] = ["Ascension Day" if flag else None for flag in holiday]
++    df["is_holiday"] = holiday
++    df["is_bridge_day"] = False
++    df["year"] = field(date, "year")
++    return df
++
++
++@pytest.fixture(scope="module")
++def dataset() -> TimeFDataset:
++    return build_dataset(TimeFDataset(metadata=SwissGridAnomalyCotConnector().metadata()), _hourly())
++
++
++def test_each_iso_week_becomes_a_record_with_three_tasks(dataset):
++    records = dataset.records
++    # ISO weeks with all seven days in 2020-2025: 2020-W02 to 2025-W52.
++    assert len(records) == 312
++    assert len(dataset.tasks_of(ClassificationTask)) == 312
++    assert len(dataset.tasks_of(TemporalLocalizationTask)) == 312
++    assert len(dataset.tasks_of(AnswerTask)) == 312
++    splits = [task.split for task in dataset.tasks_of(ClassificationTask)]
++    assert (splits.count(Split.TRAIN), splits.count(Split.VALIDATION), splits.count(Split.TEST)) == (208, 52, 52)
++    first = records[0]
++    assert first.metadata == {"window_id": "2020-W02"}
++    grid, weather = first.sources
++    assert [signal.name for signal in grid.signals] == list(GRID_SIGNALS.values())
++    assert [signal.name for signal in weather.signals] == ["Temperature", "Global radiation"]
++
++
++def test_records_carry_utc_start_and_dst_lengths(dataset):
++    by_week = {record.metadata["window_id"]: record for record in dataset.records}
++    spring = by_week["2025-W13"]  # contains 30 March 2025
++    assert spring.start_time.timestamp == int(datetime(2025, 3, 23, 23, tzinfo=UTC).timestamp() * 1_000_000)
++    assert len(spring.signals[0].to_numpy()) == 167
++    assert len(by_week["2025-W43"].signals[0].to_numpy()) == 169  # contains 26 October 2025
++    assert len(by_week["2025-W20"].signals[0].to_numpy()) == 168
++
++
++def test_the_holiday_dip_is_found_explained_and_localized(dataset):
++    week = next(r for r in dataset.records if r.metadata["window_id"] == "2025-W22")
++    cause = next(t for t in dataset.tasks_of(ClassificationTask) if t.inputs[0] is week)
++    assert cause.label_set == CAUSE
++    assert cause.targets is not None
++    assert read_value(cause.targets[0]) == "public_holiday"
++    rationale = read_value(cause.rationale)
++    assert "Ascension Day" in rationale
++    assert rationale.endswith("Answer: public_holiday")
++    days = next(t for t in dataset.tasks_of(TemporalLocalizationTask) if t.inputs[0] is week)
++    assert days.targets is not None
++    (span,) = days.targets
++    # Thursday is the fourth local day of the week: hours 72 to 96 of the record.
++    assert (span.start_us, span.end_us) == (72 * 3_600_000_000, 96 * 3_600_000_000)
++    facts = json.loads(read_value(next(a.value for a in week.annotations if a.key == "facts")))
++    assert facts["label"] == "public_holiday"
++
++
++def test_exchange_answer(dataset):
++    task = dataset.tasks_of(AnswerTask)[0]
++    assert task.targets is not None
++    assert read_value(task.targets[0]) == "net exporter"
++    assert "Italy (1,000 MW)" in read_value(task.rationale)
++
++
++def test_the_dataset_round_trips_through_storage(dataset, tmp_path):
++    version_dir = dataset.write(path=tmp_path / "registry")
++    with TimeFReader(open_local_version(version_dir)) as reader:
++        reader.verify()
++        assert_datasets_equal(dataset, reader.read())
++
++
++def _render(instants: pd.DatetimeIndex) -> list[str]:
++    return [(t.tz_localize(None) + t.tz_convert(TZ).utcoffset()).strftime("%d.%m.%Y %H:%M") for t in instants]
++
++
++def _year(year: int) -> pd.DatetimeIndex:
++    start = pd.Timestamp(year, 1, 1).tz_localize(TZ).tz_convert("UTC")
++    end = pd.Timestamp(year + 1, 1, 1).tz_localize(TZ).tz_convert("UTC")
++    return pd.date_range(start, end, freq="15min", inclusive="left")
++
++
++def test_both_label_conventions_parse_to_the_same_quarters():
++    end_labels = parse_labels(pd.Series(_render(_year(2024) + pd.Timedelta("15min"))))
++    start_labels = parse_labels(pd.Series(_render(_year(2025))))
++    assert labels_to_utc_start(end_labels, 2024).equals(_year(2024).rename("utc_start"))
++    assert labels_to_utc_start(start_labels, 2025).equals(_year(2025).rename("utc_start"))
++    with pytest.raises(SwissgridFormatError, match="rows"):
++        labels_to_utc_start(end_labels.drop(index=28810).reset_index(drop=True), 2024)
++
++
++def test_the_workbook_columns_are_read_by_header(tmp_path):
++    headers = list(swissgrid.COLUMNS)
++    order = [headers[2], "Decoy", headers[1], *headers[3:], headers[0]]
++    path = tmp_path / "EnergieUebersichtCH-2021.xlsx"
++    workbook = openpyxl.Workbook(write_only=True)
++    sheet = workbook.create_sheet(swissgrid.SHEET)
++    sheet.append([None, *(f"Deutsch\n{header}" for header in order)])
++    sheet.append(["Zeitstempel", *(["kWh"] * len(order))])
++    for label in _render(_year(2021) + pd.Timedelta("15min")):
++        sheet.append([label, *range(1, len(order) + 1)])
++    workbook.save(path)
++    frame = swissgrid.read_year(path, 2021)
++    for position, header in enumerate(order, start=1):
++        if header in swissgrid.COLUMNS:
++            assert (frame[swissgrid.COLUMNS[header]] == position).all(), header
