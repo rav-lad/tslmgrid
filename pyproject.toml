@@ -10,7 +10,6 @@ dependencies = [
     "pyarrow>=26.0.1",
     "requests>=2.34.2",
     "tabulate>=0.10.0",
-    "timenet",
 ]
 
 [dependency-groups]
@@ -24,6 +23,7 @@ sgcot-ingest = "swissgrid_cot.ingest.build:main"
 sgcot-annotate = "swissgrid_cot.annotate.build:main"
 sgcot-export = "swissgrid_cot.train.export:main"
 sgcot-baselines = "swissgrid_cot.eval.baselines:main"
+sgcot-score = "swissgrid_cot.eval.score:main"
 
 [build-system]
 requires = ["uv_build>=0.12,<0.13"]
@@ -34,11 +34,3 @@ testpaths = ["tests"]
 
 [tool.uv.build-backend]
 module-name = "swissgrid_cot"
-
-[tool.uv.workspace]
-members = [
-    "ext/TimeNet/packages/timenet",
-]
-
-[tool.uv.sources]
-timenet = { workspace = true, editable = true }

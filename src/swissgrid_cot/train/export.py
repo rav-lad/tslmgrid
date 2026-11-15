@@ -2,10 +2,13 @@
 
 Usage::
 
-    uv run sgcot-export --registry <TimeNet local registry>
+    uv run sgcot-export                          # from data/processed/annotations (no TimeNet needed)
+    uv run --with-editable ext/TimeNet/packages/timenet sgcot-export --registry <TimeNet local registry>
 
-The ISO-week windows of every split are read from the built TimeNet dataset, so training consumes
-exactly what TimeNet publishes. The train split is augmented with the 7-day windows starting on
+By default the ISO-week windows come from ``windows.jsonl``, which the connector's pipeline also
+produces. With ``--registry`` they are read back from the built TimeNet dataset instead, so training
+consumes exactly what TimeNet publishes (``scripts/check_timenet_build.py`` shows both agree).
+The train split is augmented with the 7-day windows starting on
 every train day (``windows_rolling_train.jsonl``, same rules, never reaching into 2024-2025); the
 Monday-start ones are dropped, as TimeNet already holds them.
 
@@ -107,27 +110,44 @@ def from_timenet(registry: str) -> list[dict]:
     return samples
 
 
+def _read_windows(name: str) -> list[dict]:
+    path = PROCESSED_DIR / "annotations" / name
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def _window_values(hourly: pd.DataFrame, w: dict) -> dict[str, list[float]]:
+    week = pd.date_range(w["facts"]["start_local"], w["facts"]["end_local"], freq="D")
+    rows = hourly[hourly.local_date.isin(week)]
+    return {n: rows[c].astype(float).round(3).tolist() for n, c in COLUMNS.items()}
+
+
+def from_windows() -> list[dict]:
+    """The ISO-week samples, built from the annotation files without TimeNet."""
+    hourly = pd.read_parquet(PROCESSED_DIR / "ch_hourly.parquet")
+    samples = []
+    for w in _read_windows("windows.jsonl"):
+        values = _window_values(hourly, w)
+        samples += [sample(w, t, values, augmented=False) for t in SERIES]
+    return samples
+
+
 def rolling_train() -> list[dict]:
     hourly = pd.read_parquet(PROCESSED_DIR / "ch_hourly.parquet")
     samples = []
-    path = PROCESSED_DIR / "annotations" / "windows_rolling_train.jsonl"
-    for line in path.read_text(encoding="utf-8").splitlines():
-        w = json.loads(line)
-        if "-W" in w["window_id"]:  # a Monday start: TimeNet already holds this ISO week
+    for w in _read_windows("windows_rolling_train.jsonl"):
+        if "-W" in w["window_id"]:  # a Monday start: the ISO week is already in the base samples
             continue
-        week = pd.date_range(w["facts"]["start_local"], w["facts"]["end_local"], freq="D")
-        rows = hourly[hourly.local_date.isin(week)]
-        values = {n: rows[c].astype(float).round(3).tolist() for n, c in COLUMNS.items()}
+        values = _window_values(hourly, w)
         samples += [sample(w, t, values, augmented=True) for t in SERIES]
     return samples
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--registry", required=True, help="the TimeNet local registry holding the built dataset")
+    parser.add_argument("--registry", help="read the ISO weeks from this TimeNet local registry (needs timenet)")
     parser.add_argument("--no-augment", action="store_true")
     args = parser.parse_args()
-    samples = from_timenet(args.registry)
+    samples = from_timenet(args.registry) if args.registry else from_windows()
     if not args.no_augment:
         samples += rolling_train()
     OUT.mkdir(parents=True, exist_ok=True)

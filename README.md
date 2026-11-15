@@ -13,16 +13,50 @@ uv sync
 uv run sgcot-download      # 19 source files, verified against sources.lock.json (sha256)
 uv run sgcot-ingest        # data/processed/ch_hourly.parquet: 52,608 aligned UTC hours, 2020-2025
 uv run sgcot-annotate      # baseline, anomalies, causes, weekly Q/A -> data/processed/annotations/
-uv run python scripts/sync_connector.py            # copy the pipeline into the TimeNet connector
-# build the TimeNet dataset (from ext/TimeNet, on branch feature/swiss-grid-anomaly-cot)
-PYTHONUTF8=1 uv run --no-sync timenet-build build aionic/swiss-grid-anomaly-cot --local-registry ../../scratch/registry
-uv run sgcot-export --registry scratch/registry    # OpenTSLM samples, read back from TimeNet
+uv run sgcot-export        # OpenTSLM samples -> data/processed/opentslm/{train,validation,test}.jsonl
 uv run sgcot-baselines     # non-learned baselines on validation and test
+uv run sgcot-score --predictions <OpenTSLM test_predictions.jsonl> --name <system>   # score a model
 uv run python demo/build_demo.py [--predictions <OpenTSLM test predictions>]   # demo/index.html
-uv run pytest              # 23 tests: parsing, DST, alignment, leakage, number check, connector sync
+uv run pytest              # 28 tests: parsing, DST, alignment, leakage, number check, scoring
+```
+
+`uv sync` needs nothing but this repository. The TimeNet dataset is a separate step, run from a
+clone of TimeNet in `ext/TimeNet` (branch `feature/swiss-grid-anomaly-cot`, or apply
+`connector/timenet-swiss-grid-anomaly-cot.patch`):
+
+```bash
+uv run python scripts/sync_connector.py            # copy the pipeline into the TimeNet connector
+# from ext/TimeNet:
+PYTHONUTF8=1 uv run --no-sync timenet-build build aionic/swiss-grid-anomaly-cot --local-registry ../../scratch/registry
+# from this repository, to export the samples as TimeNet publishes them instead of from windows.jsonl:
+uv run --with-editable ext/TimeNet/packages/timenet sgcot-export --registry scratch/registry
 ```
 
 `PYTHONUTF8=1` works around a Windows-only decoding bug in `timenet-build`'s isolated build.
+
+## Fine-tuning and scoring
+
+1. Clone OpenTSLM and apply `train/opentslm-stage6-swissgrid-cot.patch` (checked against OpenTSLM
+   commit `2968f4b`). It adds the `stage6_swissgrid_cot` stage and `SwissGridCoTQADataset`.
+2. Point `SWISSGRID_COT_DIR` at `data/processed/opentslm/`.
+3. **Stage 6 starts from the stage 5 checkpoint.** OpenTSLM refuses to run it unless
+   `results/<llm>/<model type>/stage5_ecg_cot/checkpoints/best_model.pt` and its `metrics.json`
+   exist: train stages 1-5 first, or put a pretrained OpenTSLM checkpoint of the same base model and
+   model type there. Early stopping is on validation loss (patience 5).
+4. `uv run sgcot-score --predictions <results/.../stage6_swissgrid_cot/results/test_predictions.jsonl>`
+   prints the model next to the baselines and writes `reports/eval/<name>_<split>.{json,md}`. Samples
+   without a prediction count as wrong; an unknown or repeated `sample_id` is an error.
+
+Caveats when reading the scores:
+
+- The rationales quote numbers the inputs cannot give exactly (the expected load, z-scores, the
+  weather effect, which come from the baseline). The model can only approximate them, so
+  `hallucinated_number_rate` (exact match) is a ceiling. `ungrounded_number_rate_tol` accepts values
+  within 2 % of a fact. Read both, and judge faithfulness on the cause and the days.
+- The rolling train windows overlap by 6 days of 7: 4,365 train samples are worth about 208
+  independent weeks. Watch the validation loss.
+- The test year holds 3 of the 9 causes (`none`, `public_holiday`, `christmas_newyear`), and no
+  ISO week has `bridge_day` as its label in any split.
 
 ## Data
 
@@ -75,9 +109,9 @@ The data's authenticity is verified against independent references in `reports/d
 | 2 Ingest | done, tested (DST, both label conventions, column mapping) |
 | 3 Annotate | done, tested (leakage, rules, number check) |
 | 4 TimeNet connector | builds in isolation and round-trips through the client; ruff, ty (3.13 and 3.11) and connector tests pass. Not yet committed or opened as a PR. |
-| Training prep | export (4,365 train / 156 val / 156 test samples), OpenTSLM stage 6 and dataset class, smoke-tested on CPU |
-| Evaluation | metrics and non-learned baselines done; zero-shot LLM baseline and LLM judge need an API key |
-| 5 Fine-tune | not started: needs a GPU and Hugging Face access to the base model |
+| Training prep | export (4,365 train / 156 val / 156 test samples, no TimeNet needed), OpenTSLM stage 6 and dataset class, smoke-tested on CPU |
+| Evaluation | metrics, non-learned baselines and `sgcot-score` for model predictions done; zero-shot LLM baseline and LLM judge need an API key |
+| 5 Fine-tune | not started: needs a GPU, Hugging Face access to the base model and a stage 5 checkpoint (see above) |
 | 6 Demo | `demo/index.html`, a self-contained page: week map, hourly charts with the expected daily mean and the anomalous days, the three explanations. It shows the model's answers once `--predictions` is passed. Not committed: it embeds Swissgrid data whose license is unknown. |
 
 Baselines on the test year (2025), from `reports/eval/baselines.md`:
@@ -101,7 +135,7 @@ The test year has only 8 weeks with an anomaly (20 days), so per-week metrics ar
 src/swissgrid_cot/ingest/    parsing, alignment, weather, holidays (single source of truth)
 src/swissgrid_cot/annotate/  baseline, anomalies, causes, rationales, weekly windows
 src/swissgrid_cot/train/     OpenTSLM export
-src/swissgrid_cot/eval/      metrics, baselines
+src/swissgrid_cot/eval/      metrics, baselines, scoring of model predictions
 scripts/                     verification, connector sync, TimeNet build check
 connector/                   patch of the TimeNet connector (also on ext/TimeNet branch)
 train/                       patch of OpenTSLM stage 6 (also on ext/OpenTSLM branch)
