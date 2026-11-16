@@ -1,5 +1,5 @@
 diff --git a/curriculum_learning.py b/curriculum_learning.py
-index 4b25fe2..948e536 100644
+index 4b25fe2..e6b4037 100644
 --- a/curriculum_learning.py
 +++ b/curriculum_learning.py
 @@ -13,6 +13,7 @@ from typing import List, Optional, Dict, Any, Callable
@@ -18,7 +18,26 @@ index 4b25fe2..948e536 100644
  ]
  
  
-@@ -768,6 +770,10 @@ class CurriculumTrainer:
+@@ -334,7 +336,8 @@ class CurriculumTrainer:
+             )
+ 
+     def _save_checkpoint(
+-        self, stage: str, epoch: int, val_loss: float, optimizer, scheduler
++        self, stage: str, epoch: int, val_loss: float, optimizer, scheduler,
++        filename: str = "best_model.pt",
+     ):
+         """Save model checkpoint for a specific stage."""
+         checkpoint_dir = os.path.join(self.results_dir, stage, "checkpoints")
+@@ -374,7 +377,7 @@ class CurriculumTrainer:
+                 "epoch": epoch,
+             }
+ 
+-        checkpoint_path = os.path.join(checkpoint_dir, "best_model.pt")
++        checkpoint_path = os.path.join(checkpoint_dir, filename)
+ 
+         # Check disk space before saving
+         if self.rank == 0:
+@@ -768,6 +771,10 @@ class CurriculumTrainer:
                          if stage == "stage2_captioning" and "id" in sample:
                              result["time_series_id"] = sample["id"]
  
@@ -29,7 +48,44 @@ index 4b25fe2..948e536 100644
                          # Add template_id and ecg_id for stage5_ecg_cot
                          if stage == "stage5_ecg_cot":
                              if "template_id" in sample:
-@@ -1329,6 +1335,30 @@ class CurriculumTrainer:
+@@ -926,6 +933,9 @@ class CurriculumTrainer:
+                 f"Eval-only mode requires a checkpoint for {stage_name}, but none found at {os.path.join(self.results_dir, stage_name, 'checkpoints', 'best_model.pt')}"
+             )
+ 
++        # Enable LoRA before loading the previous stage, so its LoRA adapters are loaded too
++        self._enable_lora_if_needed(stage_name)
++
+         # Load previous stage model and display metrics
+         try:
+             previous_stage_info = self._load_previous_stage_model(stage_name)
+@@ -1158,6 +1168,13 @@ class CurriculumTrainer:
+                 # Save loss history for this epoch
+                 self._save_loss_history(stage_name, epoch, avg_train_loss, avg_val_loss)
+ 
++                # Keep every epoch, to select one on a task metric instead of the validation loss
++                if os.environ.get("OPENTSLM_SAVE_EVERY_EPOCH") == "1":
++                    self._save_checkpoint(
++                        stage_name, epoch, avg_val_loss, optimizer, scheduler,
++                        filename=f"epoch_{epoch}.pt",
++                    )
++
+                 # Early stopping - all ranks need to make the same decision
+                 should_save = avg_val_loss + 1e-4 < best_val_loss
+                 if dist.is_initialized():
+@@ -1223,6 +1240,12 @@ class CurriculumTrainer:
+                 print(f"   Best validation loss: {best_val_loss:.4f}")
+                 print(f"   Epochs without improvement: {epochs_no_improve}")
+ 
++        # The test is evaluated later, with the epoch selected on a task metric
++        if os.environ.get("OPENTSLM_SKIP_TEST_EVAL") == "1" and not eval_only:
++            if self.rank == 0:
++                print("⏭️  Test evaluation skipped (OPENTSLM_SKIP_TEST_EVAL=1)")
++            return {"best_epoch": best_epoch}
++
+         metrics = self._evaluate_stage(
+             stage_name, test_loader, stage_name, metric_func, best_epoch
+         )
+@@ -1329,6 +1352,42 @@ class CurriculumTrainer:
              sampler=sampler,
          )
  
@@ -38,19 +94,31 @@ index 4b25fe2..948e536 100644
 +    ) -> Dict[str, Any]:
 +        """Stage 6: Chain-of-Thought explanation of Swiss electricity anomalies (Swiss Grid Anomaly-CoT).
 +
-+        Configuration as the other CoT stages, with fewer epochs: the train split is small.
-+        - Epochs: 20 (early stopping on validation loss)
-+        - OpenTSLMSP: encoder_lr=2e-4, projector_lr=1e-4
-+        - OpenTSLMFlamingo: base_lr=2e-4
++        Half the learning rates of the other CoT stages and few epochs: the train windows overlap.
++        With the full rates and the weighted loss, the cause task collapsed (accuracy 0.577).
++        - Epochs: 6 (early stopping on validation loss)
++        - OpenTSLMSP: encoder_lr=1e-4, projector_lr=5e-5 (LoRA follows the projector rate)
++        - OpenTSLMFlamingo: base_lr=1e-4
 +        - Metric: test loss; task metrics are computed by the swissgrid-cot evaluation.
++        - SWISSGRID_COT_SEED, when set, seeds torch, numpy and random.
 +        """
++        seed = os.environ.get("SWISSGRID_COT_SEED")
++        if seed is not None:
++            import random
++
++            import numpy as np
++
++            random.seed(int(seed))
++            np.random.seed(int(seed))
++            torch.manual_seed(int(seed))
++            torch.cuda.manual_seed_all(int(seed))
 +        return self._train_stage(
 +            stage_name="stage6_swissgrid_cot",
 +            dataset_class=SwissGridCoTQADataset,
-+            num_epochs=20,
-+            lr_encoder=2e-4,
-+            lr_projector=1e-4,
-+            lr_base=2e-4,
++            num_epochs=6,
++            lr_encoder=1e-4,
++            lr_projector=5e-5,
++            lr_base=1e-4,
 +            metric_func=None,
 +            batch_size=batch_size,
 +            eval_only=eval_only,
@@ -60,7 +128,7 @@ index 4b25fe2..948e536 100644
      def stage5_ecg_cot(
          self, batch_size: int = None, eval_only: bool = False
      ) -> Dict[str, Any]:
-@@ -1422,6 +1452,12 @@ class CurriculumTrainer:
+@@ -1422,6 +1481,12 @@ class CurriculumTrainer:
                  )
                  results[stage] = stage_results
                  self._mark_stage_completed(stage, stage_results)
@@ -73,7 +141,20 @@ index 4b25fe2..948e536 100644
              elif stage == "stage4_sleep_cot":
                  stage_results = self.stage4_sleep_cot(
                      batch_size=batch_size, eval_only=eval_only
-@@ -1553,7 +1589,7 @@ class CurriculumTrainer:
+@@ -1434,6 +1499,12 @@ class CurriculumTrainer:
+                 )
+                 results[stage] = stage_results
+                 self._mark_stage_completed(stage, stage_results)
++            elif stage == "stage6_swissgrid_cot":
++                stage_results = self.stage6_swissgrid_cot(
++                    batch_size=batch_size, eval_only=eval_only
++                )
++                results[stage] = stage_results
++                self._mark_stage_completed(stage, stage_results)
+             else:
+                 if self.rank == 0:
+                     print(f"⚠️  Unknown stage: {stage}, skipping...")
+@@ -1553,7 +1624,7 @@ class CurriculumTrainer:
          model = self._get_model()
  
          # Enable LoRA for stages after stage2_captioning
@@ -82,7 +163,7 @@ index 4b25fe2..948e536 100644
  
          if stage_name in stages_with_lora:
              if not getattr(model, "lora_enabled", False):
-@@ -1588,7 +1624,7 @@ class CurriculumTrainer:
+@@ -1588,7 +1659,7 @@ class CurriculumTrainer:
          model = self._get_model()
  
          # Enable LoRA for stages after stage2_captioning
@@ -91,12 +172,90 @@ index 4b25fe2..948e536 100644
  
          if stage_name in stages_with_lora:
              if not getattr(model, "lora_enabled", False):
+diff --git a/src/opentslm/model/llm/OpenTSLMSP.py b/src/opentslm/model/llm/OpenTSLMSP.py
+index 4e7735d..02f68c5 100644
+--- a/src/opentslm/model/llm/OpenTSLMSP.py
++++ b/src/opentslm/model/llm/OpenTSLMSP.py
+@@ -331,6 +331,10 @@ class OpenTSLMSP(TimeSeriesLLM):
+         """
+         batch: same format as generate()
+         answers: List[str] of length B
++
++        Optional per-sample keys weight the loss: "loss_weight" (float) scales the sample, and
++        "answer_weight_spans" (list of (start, end, weight) character spans of the answer) scales
++        the answer tokens that overlap a span. Without them every answer token weighs 1.
+         """
+         answers = [b["answer"] for b in batch]
+ 
+@@ -338,8 +342,10 @@ class OpenTSLMSP(TimeSeriesLLM):
+         B, L, H = inputs_embeds.size()
+ 
+         # tokenize answers
++        weighted = any("loss_weight" in b or "answer_weight_spans" in b for b in batch)
+         ans_tok = self.tokenizer(
+-            answers, return_tensors="pt", padding=True, truncation=True
++            answers, return_tensors="pt", padding=True, truncation=True,
++            return_offsets_mapping=weighted,
+         )
+         ans_ids = ans_tok.input_ids.to(self.device, non_blocking=True)
+         ans_mask = ans_tok.attention_mask.to(self.device, non_blocking=True)
+@@ -349,18 +355,43 @@ class OpenTSLMSP(TimeSeriesLLM):
+         inputs_embeds = torch.cat([inputs_embeds, ans_emb], dim=1)  # [B, L+A, H]
+         attention_mask = torch.cat([attention_mask, ans_mask], dim=1)  # [B, L+A]
+ 
+-        # labels: only on the answer tokens
++        # labels: only on the answer tokens, padding excluded
+         total_len = attention_mask.size(1)
+         labels = torch.full((B, total_len), -100, device=self.device, dtype=torch.long)
+-        labels[:, L:] = ans_ids
++        labels[:, L:] = ans_ids.masked_fill(ans_mask == 0, -100)
++
++        if not weighted:
++            outputs = self.llm(
++                inputs_embeds=inputs_embeds,
++                attention_mask=attention_mask,
++                labels=labels,
++                return_dict=True,
++            )
++            return outputs.loss
++
++        # per-token weights on the answer positions
++        weights = torch.ones(ans_ids.shape, dtype=torch.float32)
++        for i, b in enumerate(batch):
++            for start, end, w in b.get("answer_weight_spans", []):
++                for t, (s, e) in enumerate(ans_tok.offset_mapping[i].tolist()):
++                    if e > s and s < end and e > start:
++                        weights[i, t] = w
++            weights[i] *= float(b.get("loss_weight", 1.0))
++        weights = weights.to(self.device)
+ 
+         outputs = self.llm(
+-            inputs_embeds=inputs_embeds,
+-            attention_mask=attention_mask,
+-            labels=labels,
+-            return_dict=True,
++            inputs_embeds=inputs_embeds, attention_mask=attention_mask, return_dict=True
+         )
+-        return outputs.loss
++        # position t predicts token t + 1: only the positions that predict answer tokens
++        logits = outputs.logits[:, L - 1 : total_len - 1].float()
++        targets = labels[:, L:]
++        ce = torch.nn.functional.cross_entropy(
++            logits.reshape(-1, logits.size(-1)), targets.reshape(-1),
++            ignore_index=-100, reduction="none",
++        ).view(targets.shape)
++        valid = (targets != -100).float()
++        # normalised by the token count, not the weights, so a weight really scales the gradient
++        return (ce * weights * valid).sum() / valid.sum().clamp(min=1)
+ 
+     def get_eos_token(self) -> str:
+         return self.tokenizer.eos_token
 diff --git a/src/opentslm/time_series_datasets/swissgrid/SwissGridCoTQADataset.py b/src/opentslm/time_series_datasets/swissgrid/SwissGridCoTQADataset.py
 new file mode 100644
-index 0000000..ee9c4ba
+index 0000000..f6eb709
 --- /dev/null
 +++ b/src/opentslm/time_series_datasets/swissgrid/SwissGridCoTQADataset.py
-@@ -0,0 +1,68 @@
+@@ -0,0 +1,100 @@
 +# SPDX-License-Identifier: MIT
 +"""Swiss Grid Anomaly-CoT: weekly Swiss power and weather series with rule-based explanations.
 +
@@ -110,6 +269,7 @@ index 0000000..ee9c4ba
 +
 +import json
 +import os
++import re
 +from typing import List, Literal, Tuple
 +
 +import numpy as np
@@ -121,6 +281,33 @@ index 0000000..ee9c4ba
 +    "none", "public_holiday", "bridge_day", "christmas_newyear", "summer_holidays",
 +    "covid_lockdown", "cold_snap", "heatwave", "unexplained",
 +]
++
++# Loss weights: the tokens that carry the decision (the dates and the final answer), and the
++# windows with an anomaly, which are a minority. The defaults (1 and 1) give the plain loss: 5 and 2
++# raised the day recall but named the partial cantonal holidays too.
++DECISION_WEIGHT = float(os.environ.get("SWISSGRID_COT_DECISION_WEIGHT", "1"))
++ANOMALY_WEIGHT = float(os.environ.get("SWISSGRID_COT_ANOMALY_WEIGHT", "1"))
++_DAYS = "Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday"
++_MONTHS = "January|February|March|April|May|June|July|August|September|October|November|December"
++DATE = re.compile(rf"\b(?:(?:{_DAYS}) \d{{1,2}} (?:{_MONTHS}) \d{{4}}|\d{{4}}-\d{{2}}-\d{{2}})\b")
++
++
++def decision_spans(answer: str, eos: str) -> List[Tuple[int, int]]:
++    """Character spans of the dates and of the final answer (after the last 'Answer:')."""
++    spans = [m.span() for m in DATE.finditer(answer)]
++    cut = answer.rfind("Answer:")
++    if cut >= 0:
++        end = len(answer) - len(eos) if answer.endswith(eos) else len(answer)
++        spans.append((cut + len("Answer:"), end))
++    return spans
++
++
++def is_anomalous(row) -> bool:
++    if row["task"] == "anomaly_days":
++        return bool(row["target"])
++    if row["task"] == "anomaly_cause":
++        return row["target"] != "none"
++    return False
 +
 +
 +def _read(path: str) -> list:
@@ -160,6 +347,10 @@ index 0000000..ee9c4ba
 +    def _format_sample(self, row):
 +        sample = super()._format_sample(row)
 +        sample["id"] = row["id"]
++        sample["answer_weight_spans"] = [
++            (s, e, DECISION_WEIGHT) for s, e in decision_spans(sample["answer"], self.EOS_TOKEN)
++        ]
++        sample["loss_weight"] = ANOMALY_WEIGHT if is_anomalous(row) else 1.0
 +        return sample
 +
 +    @staticmethod

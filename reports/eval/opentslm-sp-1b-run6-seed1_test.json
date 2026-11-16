@@ -1,0 +1,32 @@
+{
+  "n_samples": 156,
+  "n_predicted": 156,
+  "parsable_rate": 1.0,
+  "hallucinated_number_rate": 0.7244,
+  "ungrounded_number_rate_tol": 0.6346,
+  "cause_n": 52,
+  "cause_accuracy": 0.9423,
+  "cause_macro_f1": 0.8815,
+  "window_anomaly_f1": 0.8571,
+  "cause_confusion": {
+    "christmas_newyear": {
+      "christmas_newyear": 2
+    },
+    "none": {
+      "none": 44
+    },
+    "public_holiday": {
+      "covid_lockdown": 1,
+      "public_holiday": 3,
+      "none": 2
+    }
+  },
+  "days_n_windows": 52,
+  "days_n_gold": 19,
+  "day_precision": 0.7222,
+  "day_recall": 0.6842,
+  "day_f1": 0.7027,
+  "days_exact_window_rate": 0.8654,
+  "exchange_n": 52,
+  "exchange_accuracy": 1.0
+}
