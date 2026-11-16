@@ -8,8 +8,12 @@ A prediction is the text a system generated for one sample. Its answer is what f
 * anomaly_days: day-level precision, recall and F1 over every day of the evaluated windows, and the
   share of windows whose set of days is exactly right.
 * exchange: accuracy of "net importer" / "net exporter".
-* all tasks: the share of outputs with a parsable answer, and the share that state a number found
-  neither in the window's facts nor in the prompt (a hallucinated number).
+* all tasks: the share of outputs with a parsable answer, and two shares of outputs that state a
+  number found neither in the window's facts nor in the prompt:
+  ``hallucinated_number_rate`` needs the exact string; ``ungrounded_number_rate_tol`` accepts a number
+  within 2 % (at least 0.15) of a fact. The rationales quote values the inputs cannot give exactly
+  (the expected load, z-scores, the weather effect), so the strict rate is a ceiling and the lenient
+  one a floor: read them together.
 """
 
 import json
@@ -17,10 +21,12 @@ import re
 from collections import defaultdict
 
 from swissgrid_cot.annotate.causes import CAUSES
-from swissgrid_cot.annotate.rationales import check_numbers
+from swissgrid_cot.annotate.rationales import check_numbers, numbers_in
 
 _ANSWER = re.compile(r"Answer:\s*(.+?)\s*$", re.DOTALL)
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+NUMBER_REL_TOL = 0.02
+NUMBER_ABS_TOL = 0.15
 
 
 def answer_of(text: str) -> str | None:
@@ -54,6 +60,21 @@ def parse(task: str, text: str):
     raise ValueError(task)
 
 
+def ungrounded_numbers(text: str, facts_text: str) -> set[str]:
+    """Numbers of ``text`` that lie within no tolerance of any number of ``facts_text``.
+
+    Returns:
+        The offending numbers, as written. Empty means every number is close to a known one.
+    """
+    known = [abs(float(n)) for n in numbers_in(facts_text)]
+    out = set()
+    for n in numbers_in(text):
+        v = abs(float(n))
+        if not any(abs(v - k) <= max(NUMBER_ABS_TOL, NUMBER_REL_TOL * k) for k in known):
+            out.add(n)
+    return out
+
+
 def _f1(tp: int, fp: int, fn: int) -> tuple[float, float, float]:
     p = tp / (tp + fp) if tp + fp else 0.0
     r = tp / (tp + fn) if tp + fn else 0.0
@@ -71,7 +92,7 @@ def score(samples: list[dict], predictions: dict[str, str]) -> dict:
         by_task[s["task"]].append((s, predictions.get(s["id"])))
     out: dict = {"n_samples": len(samples), "n_predicted": sum(p is not None for p in predictions.values())}
 
-    halluc, parsable, total = 0, 0, 0
+    halluc, lenient, parsable, total = 0, 0, 0, 0
     for task, rows in by_task.items():
         for s, text in rows:
             total += 1
@@ -80,8 +101,10 @@ def score(samples: list[dict], predictions: dict[str, str]) -> dict:
             parsable += parse(task, text) is not None
             facts_text = json.dumps(s["facts"], ensure_ascii=False) + " " + s["pre_prompt"]
             halluc += bool(check_numbers(text, facts_text))
+            lenient += bool(ungrounded_numbers(text, facts_text))
     out["parsable_rate"] = round(parsable / total, 4) if total else None
     out["hallucinated_number_rate"] = round(halluc / total, 4) if total else None
+    out["ungrounded_number_rate_tol"] = round(lenient / total, 4) if total else None
 
     rows = by_task.get("anomaly_cause", [])
     if rows:

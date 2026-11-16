@@ -26,7 +26,7 @@ SAMPLES = PROCESSED_DIR / "opentslm"
 OUT = REPO_ROOT / "reports" / "eval"
 TABLE_METRICS = (
     "cause_accuracy", "cause_macro_f1", "window_anomaly_f1", "day_precision", "day_recall", "day_f1",
-    "exchange_accuracy", "parsable_rate", "hallucinated_number_rate",
+    "exchange_accuracy", "parsable_rate", "hallucinated_number_rate", "ungrounded_number_rate_tol",
 )  # fmt: skip
 
 

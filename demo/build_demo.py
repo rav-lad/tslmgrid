@@ -100,6 +100,7 @@ def main() -> None:
         raise SystemExit(f"{TEMPLATE.name} must hold the marker {marker} exactly once")
     page = html.replace(marker, data)
     # The template is a body fragment: the artifact host adds the document skeleton, a static host needs it here.
+    ARTIFACT.parent.mkdir(parents=True, exist_ok=True)
     ARTIFACT.write_text(page, encoding="utf-8")
     OUT.write_text(SKELETON.replace("{page}", page), encoding="utf-8")
     print(f"wrote {OUT} ({OUT.stat().st_size / 1e6:.1f} MB, {len(weeks)} weeks, {len(predictions)} model answers)")

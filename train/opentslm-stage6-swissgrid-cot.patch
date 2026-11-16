@@ -1,5 +1,5 @@
 diff --git a/curriculum_learning.py b/curriculum_learning.py
-index 4b25fe2..bfcf691 100644
+index 4b25fe2..948e536 100644
 --- a/curriculum_learning.py
 +++ b/curriculum_learning.py
 @@ -13,6 +13,7 @@ from typing import List, Optional, Dict, Any, Callable
@@ -73,20 +73,7 @@ index 4b25fe2..bfcf691 100644
              elif stage == "stage4_sleep_cot":
                  stage_results = self.stage4_sleep_cot(
                      batch_size=batch_size, eval_only=eval_only
-@@ -1434,6 +1470,12 @@ class CurriculumTrainer:
-                 )
-                 results[stage] = stage_results
-                 self._mark_stage_completed(stage, stage_results)
-+            elif stage == "stage6_swissgrid_cot":
-+                stage_results = self.stage6_swissgrid_cot(
-+                    batch_size=batch_size, eval_only=eval_only
-+                )
-+                results[stage] = stage_results
-+                self._mark_stage_completed(stage, stage_results)
-             else:
-                 if self.rank == 0:
-                     print(f"⚠️  Unknown stage: {stage}, skipping...")
-@@ -1553,7 +1595,7 @@ class CurriculumTrainer:
+@@ -1553,7 +1589,7 @@ class CurriculumTrainer:
          model = self._get_model()
  
          # Enable LoRA for stages after stage2_captioning
@@ -95,7 +82,7 @@ index 4b25fe2..bfcf691 100644
  
          if stage_name in stages_with_lora:
              if not getattr(model, "lora_enabled", False):
-@@ -1588,7 +1630,7 @@ class CurriculumTrainer:
+@@ -1588,7 +1624,7 @@ class CurriculumTrainer:
          model = self._get_model()
  
          # Enable LoRA for stages after stage2_captioning
