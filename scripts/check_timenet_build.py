@@ -19,7 +19,7 @@ from timenet.types import AnswerTask, ClassificationTask, TemporalLocalizationTa
 from timenet.types.text import read_value
 
 REPO = Path(__file__).resolve().parents[1]
-DATASET = "aionic/swiss-grid-anomaly-cot"
+DATASET = "scooby-team/swiss-grid-anomaly-cot"
 COLUMNS = {
     "End-user consumption": "load_enduser_mw", "Total consumption": "load_total_mw", "Production": "production_mw",
     "Net import from Austria": "net_import_at_mw", "Net import from Germany": "net_import_de_mw",

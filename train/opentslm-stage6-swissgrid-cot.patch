@@ -260,7 +260,7 @@ index 0000000..f6eb709
 +"""Swiss Grid Anomaly-CoT: weekly Swiss power and weather series with rule-based explanations.
 +
 +Reads the samples exported by the swissgrid-cot project (``sgcot-export``), which takes them from
-+the TimeNet dataset ``aionic/swiss-grid-anomaly-cot`` and adds rolling 7-day train windows. Point
++the TimeNet dataset ``scooby-team/swiss-grid-anomaly-cot`` and adds rolling 7-day train windows. Point
 +``SWISSGRID_COT_DIR`` at the folder holding ``train.jsonl``, ``validation.jsonl`` and ``test.jsonl``.
 +
 +Each sample is one task on one window: the cause of the largest consumption anomaly, the anomalous

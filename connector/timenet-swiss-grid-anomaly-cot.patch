@@ -1,37 +1,109 @@
-diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/__init__.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/__init__.py
-new file mode 100644
-index 0000000..d9cbba5
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/__init__.py b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/__init__.py
+new file mode 100755
+index 0000000..f128e31
 --- /dev/null
-+++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/__init__.py
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/__init__.py
 @@ -0,0 +1,4 @@
-+"""Connectors for datasets published by the aionic team."""
++"""Connectors for datasets published by the Scooby Team."""
 +
 +# Keep this a regular package, not a namespace package. pkgutil.walk_packages finds the
 +# connector packages below it only through this __init__.py.
-diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/__init__.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/__init__.py
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/README.md b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/README.md
 new file mode 100644
-index 0000000..7cf9cce
+index 0000000..8e7e1a8
 --- /dev/null
-+++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/__init__.py
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/README.md
+@@ -0,0 +1,66 @@
++# scooby-team/swiss-grid-anomaly-cot
++
++Weekly windows of the Swiss electricity system, 2020-2025, with explained load anomalies. Every
++label is computed by rules from public data; no label comes from a model.
++
++## Records
++
++One Record per ISO week (312 weeks), with two sources of hourly signals:
++
++- **Swissgrid, Swiss control block** (MW): end-user consumption, total consumption, production,
++  and the net import from Austria, Germany, France and Italy. The connector sums Swissgrid's
++  quarter-hourly energies (kWh) into hourly mean power.
++- **MeteoSwiss SwissMetNet** (12 stations): air temperature (°C) and global radiation (W/m²), each
++  a mean weighted by the 2023 BFS population of the cantons around each station.
++
++A week has 168 hours, or 167 / 169 in the weeks of a clock change. Everything is stored in UTC.
++
++## Tasks
++
++| task | type | target |
++| --- | --- | --- |
++| cause | `ClassificationTask` | cause of the week's largest anomaly, or `none` (9 labels) |
++| days | `TemporalLocalizationTask` | every anomalous day of the week, possibly none |
++| exchange | `AnswerTask` | net importer or exporter, and through which borders |
++
++Each task carries a rationale written by fixed templates from the computed facts. A check rejects
++any number in the text that is not one of the facts, which the record keeps as a JSON annotation.
++
++## How the labels are computed
++
++1. A daily linear baseline (weekday type × month, heating and cooling degree days, lagged heating
++   degree days, radiation, trend), fitted on the ordinary days of 2020-2023 only, gives the
++   expected end-user consumption. Its MAPE is 2.3 % on the ordinary days of the 2025 test year.
++2. A day is anomalous when its robust z-score is at least 3 in absolute value.
++3. Ordered rules give the cause: `covid_lockdown`, `christmas_newyear` (22 Dec - 6 Jan),
++   `public_holiday` (a holiday for at least 20 % of the population), `bridge_day`,
++   `summer_holidays` (14 Jul - 15 Aug). Holidays come from `holidays` 0.108 per canton.
++
++No day of 2020-2025 lies above expectation at this threshold, so `cold_snap`, `heatwave` and
++`unexplained` are in the label set but never occur.
++
++## Splits
++
++208 train weeks (2020-2023), 52 validation (2024) and 52 test (2025). The baseline is fitted on
++train days only and never sees a validation or test day.
++
++## Source quirks the connector handles
++
++- Swissgrid writes Swiss civil time. In 2020-2024 each label is the **end** of its quarter hour;
++  in 2025 it is the **start**. The convention is detected from the first label of each file.
++- On the fall-back day the 02:xx labels appear twice. 2020 writes the fall-back instant as 03:00
++  CEST, 2021-2024 as 02:00 CET. Every label is checked against the wall-clock reading of its
++  instant, so a missing, extra or shuffled row raises.
++- MeteoSwiss writes UTC, labelled at the end of each hour.
++
++## Limitations
++
++- **License.** Swissgrid states no license for these files, so the card says `NONE`. MeteoSwiss
++  data is CC BY 4.0.
++- **Few causes in the test year.** 2025 holds 3 of the 9 causes (`none`, `public_holiday`,
++  `christmas_newyear`), and 19 anomalous days in 8 weeks, so scores on the days task are noisy.
++- **Numbers in the rationales.** Some quoted numbers (the expected load, z-scores, the weather
++  effect) come from the baseline and cannot be read exactly from the signals.
++- **Revisions.** Swissgrid re-published 2023 in March 2026, and MeteoSwiss rewrites the station
++  files once a year. A revised file fails its SHA-256 pin, so the build stops instead of silently
++  changing the labels.
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/__init__.py b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/__init__.py
+new file mode 100755
+index 0000000..474731f
+--- /dev/null
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/__init__.py
 @@ -0,0 +1,6 @@
 +"""Swiss Grid Anomaly-CoT: weekly Swiss power and weather windows with rule-based anomaly explanations."""
 +
-+from timenet_connectors.datasets.aionic.swiss_grid_anomaly_cot.connector import (
++from timenet_connectors.datasets.scooby_team.swiss_grid_anomaly_cot.connector import (
 +    CONNECTOR as CONNECTOR,
 +    SwissGridAnomalyCotConnector as SwissGridAnomalyCotConnector,
 +)
-diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/__init__.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/__init__.py
-new file mode 100644
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/__init__.py b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/__init__.py
+new file mode 100755
 index 0000000..3e4e166
 --- /dev/null
-+++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/__init__.py
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/__init__.py
 @@ -0,0 +1 @@
 +"""The annotation pipeline, copied from the swissgrid_cot project by its sync script."""
-diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/anomalies.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/anomalies.py
-new file mode 100644
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/anomalies.py b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/anomalies.py
+new file mode 100755
 index 0000000..baa25a1
 --- /dev/null
-+++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/anomalies.py
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/anomalies.py
 @@ -0,0 +1,76 @@
 +"""Flag anomalous days from the baseline residual with a robust z-score.
 +
@@ -109,11 +181,11 @@ index 0000000..baa25a1
 +        sign=("z", lambda s: int(np.sign(s.iloc[0]))),
 +        peak_z=("z", lambda s: float(s.loc[s.abs().idxmax()])),
 +    )
-diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/assemble.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/assemble.py
-new file mode 100644
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/assemble.py b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/assemble.py
+new file mode 100755
 index 0000000..f729ea0
 --- /dev/null
-+++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/assemble.py
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/assemble.py
 @@ -0,0 +1,41 @@
 +"""Assemble the aligned hourly national table from parsed sources. No file or network access."""
 +
@@ -156,11 +228,11 @@ index 0000000..f729ea0
 +    df = df.join(cal, on="local_date")
 +    df["year"] = df.local_date.dt.year
 +    return df
-diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/baseline.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/baseline.py
-new file mode 100644
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/baseline.py b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/baseline.py
+new file mode 100755
 index 0000000..7bf41d2
 --- /dev/null
-+++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/baseline.py
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/baseline.py
 @@ -0,0 +1,165 @@
 +"""Expected daily end-user consumption: a transparent linear model, fitted on train years only.
 +
@@ -327,11 +399,11 @@ index 0000000..7bf41d2
 +    design = proto.design(train).to_numpy()
 +    coef, *_ = np.linalg.lstsq(design, train.load_mw.to_numpy(), rcond=None)
 +    return Baseline(columns=columns, coef=coef, n_fit_days=int(mask.sum()))
-diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/calendar_ch.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/calendar_ch.py
-new file mode 100644
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/calendar_ch.py b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/calendar_ch.py
+new file mode 100755
 index 0000000..099fa80
 --- /dev/null
-+++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/calendar_ch.py
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/calendar_ch.py
 @@ -0,0 +1,54 @@
 +"""Swiss public holidays per local day, weighted by the population of the cantons that observe them.
 +
@@ -387,11 +459,11 @@ index 0000000..099fa80
 +    prev_is_hol = hol.shift(1, fill_value=False)
 +    cal["is_bridge_day"] = ~hol & (((dow == MONDAY) & next_is_hol) | ((dow == FRIDAY) & prev_is_hol))
 +    return cal
-diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/causes.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/causes.py
-new file mode 100644
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/causes.py b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/causes.py
+new file mode 100755
 index 0000000..eed3952
 --- /dev/null
-+++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/causes.py
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/causes.py
 @@ -0,0 +1,124 @@
 +"""Attribute a cause to each anomalous day with explicit, ordered rules. No model, no LLM.
 +
@@ -517,11 +589,11 @@ index 0000000..eed3952
 +    normal["hdd_lag1"] = normal.hdd.shift(1)
 +    normal["cdd"] = np.maximum(0.0, tn - 20.0)
 +    return (baseline.predict(scored) - baseline.predict(normal)).rename("weather_effect_mw")
-diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/meteoswiss.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/meteoswiss.py
-new file mode 100644
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/meteoswiss.py b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/meteoswiss.py
+new file mode 100755
 index 0000000..7d1be88
 --- /dev/null
-+++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/meteoswiss.py
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/meteoswiss.py
 @@ -0,0 +1,88 @@
 +"""Parse SwissMetNet hourly files and build population-weighted national series.
 +
@@ -611,11 +683,11 @@ index 0000000..7d1be88
 +        out[col] = mean.where(coverage >= MIN_WEIGHT_COVERAGE - 1e-9)
 +        out[f"{col}_coverage"] = coverage
 +    return pd.DataFrame(out, index=index)
-diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/qa.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/qa.py
-new file mode 100644
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/qa.py b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/qa.py
+new file mode 100755
 index 0000000..4768d6a
 --- /dev/null
-+++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/qa.py
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/qa.py
 @@ -0,0 +1,197 @@
 +"""Weekly windows: facts, prompts, targets and rationales for the three tasks of each window.
 +
@@ -814,11 +886,11 @@ index 0000000..4768d6a
 +        "rationales": texts,
 +        "facts": facts,
 +    }
-diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/rationales.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/rationales.py
-new file mode 100644
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/rationales.py b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/rationales.py
+new file mode 100755
 index 0000000..a17013a
 --- /dev/null
-+++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/rationales.py
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/rationales.py
 @@ -0,0 +1,175 @@
 +"""Turn computed facts into rationale text, and check that the text invents no number.
 +
@@ -995,11 +1067,11 @@ index 0000000..a17013a
 +        )
 +    parts.append(f"Answer: net {x['role']}")
 +    return " ".join(parts)
-diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/run.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/run.py
-new file mode 100644
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/run.py b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/run.py
+new file mode 100755
 index 0000000..0442429
 --- /dev/null
-+++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/run.py
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/run.py
 @@ -0,0 +1,35 @@
 +"""Run the whole annotation on an hourly table. No file or network access."""
 +
@@ -1036,11 +1108,11 @@ index 0000000..0442429
 +    scored["weather_effect_mw"] = weather_effect(scored, baseline)
 +    windows = [build_window(window_facts(week, scored, hourly)) for week in iso_weeks(scored)]
 +    return Annotation(days=scored, baseline=baseline, scale=scale, windows=windows)
-diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/stations.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/stations.py
-new file mode 100644
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/stations.py b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/stations.py
+new file mode 100755
 index 0000000..b9dfaef
 --- /dev/null
-+++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/stations.py
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/stations.py
 @@ -0,0 +1,27 @@
 +"""The SwissMetNet stations of the national weather series and the population that weights them."""
 +
@@ -1069,11 +1141,11 @@ index 0000000..b9dfaef
 +}  # fmt: skip
 +"""Permanent resident population per canton at the end of 2023, Swiss Federal Statistical Office
 +(BFS) STATPOP, table px-x-0102010000_101. A test checks these values against the downloaded table."""
-diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/swissgrid.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/swissgrid.py
-new file mode 100644
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/swissgrid.py b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/swissgrid.py
+new file mode 100755
 index 0000000..87cf55f
 --- /dev/null
-+++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/swissgrid.py
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/swissgrid.py
 @@ -0,0 +1,196 @@
 +r"""Parse the Swissgrid "Energy Statistic Switzerland" yearly workbooks.
 +
@@ -1271,11 +1343,11 @@ index 0000000..87cf55f
 +        out[f"net_import_{b}_mw"] = out[f"imp_{b}_mw"] - out[f"exp_{b}_mw"]
 +    out["net_import_mw"] = out[[f"net_import_{b}_mw" for b in BORDERS]].sum(axis=1)
 +    return out
-diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/timefields.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/timefields.py
-new file mode 100644
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/timefields.py b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/timefields.py
+new file mode 100755
 index 0000000..aaa5a4a
 --- /dev/null
-+++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/_pipeline/timefields.py
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/_pipeline/timefields.py
 @@ -0,0 +1,41 @@
 +"""Calendar fields of a pandas DatetimeIndex, read through one typed helper.
 +
@@ -1318,11 +1390,11 @@ index 0000000..aaa5a4a
 +        The normalized index.
 +    """
 +    return pd.DatetimeIndex(methodcaller("normalize")(pd.DatetimeIndex(index)))
-diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/connector.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/connector.py
-new file mode 100644
-index 0000000..30f17b6
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/connector.py b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/connector.py
+new file mode 100755
+index 0000000..f12e772
 --- /dev/null
-+++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/connector.py
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/connector.py
 @@ -0,0 +1,275 @@
 +"""The Swiss Grid Anomaly-CoT connector: weekly Swiss power and weather windows with explained anomalies.
 +
@@ -1332,7 +1404,7 @@ index 0000000..30f17b6
 +z-score flags the anomalous days, ordered calendar and weather rules give each one a cause, and fixed
 +templates write the rationales from the computed facts. See ``_pipeline`` for each step.
 +
-+Each ISO week becomes one Record with eight hourly signals and three tasks: the cause of the largest
++Each ISO week becomes one Record with nine hourly signals and three tasks: the cause of the largest
 +anomaly (classification), the anomalous days (temporal localization) and the net import/export
 +question (answer).
 +"""
@@ -1599,21 +1671,28 @@ index 0000000..30f17b6
 +
 +
 +CONNECTOR = SwissGridAnomalyCotConnector
-diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/dataset.yaml b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/dataset.yaml
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/dataset.yaml b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/dataset.yaml
 new file mode 100644
-index 0000000..37d50de
+index 0000000..0e91d76
 --- /dev/null
-+++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/dataset.yaml
-@@ -0,0 +1,54 @@
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/dataset.yaml
+@@ -0,0 +1,61 @@
 +# yaml-language-server: $schema=https://docs.timenet.ai/schemas/dataset-card-v1.schema.json
++# Dataset Card for the scooby-team/swiss-grid-anomaly-cot connector: the single source for this
++# dataset's metadata.
++#
++# Each ISO week of 2020-2025 becomes one Record with seven hourly Swissgrid signals and two hourly
++# weather signals, and three tasks: the cause of the largest anomaly (classification), the
++# anomalous days (temporal localization) and the net import or export (answer). The connector
++# recomputes every label from the sources; see README.md for the rules and the limitations.
 +yaml_schema_version: 1
-+dataset_id: aionic/swiss-grid-anomaly-cot
++dataset_id: scooby-team/swiss-grid-anomaly-cot
 +dataset_version: 1.0.0
 +name: Swiss Grid Anomaly-CoT
 +description: >-
 +  312 weekly windows (ISO weeks) of the Swiss electricity system, 2020-2025, each with three tasks
 +  and a chain-of-thought rationale: 208 train weeks (2020-2023), 52 validation (2024) and 52 test
-+  (2025). Each record holds eight hourly signals: end-user consumption, total consumption,
++  (2025). Each record holds nine hourly signals: end-user consumption, total consumption,
 +  production, and the net import from Austria, Germany, France and Italy, all in MW and summed by
 +  the connector from Swissgrid's quarter-hourly energies; plus air temperature and global
 +  radiation, each a population-weighted mean of 12 SwissMetNet stations. A week has 168 hours, 167
@@ -1659,11 +1738,11 @@ index 0000000..37d50de
 +  - weather
 +  - cot
 +  - rule-based-supervision
-diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/requirements.txt b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/requirements.txt
-new file mode 100644
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/requirements.txt b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/requirements.txt
+new file mode 100755
 index 0000000..2931838
 --- /dev/null
-+++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/requirements.txt
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/requirements.txt
 @@ -0,0 +1,6 @@
 +# pandas aligns the quarter-hourly, hourly and daily tables and fits nothing beyond numpy's lstsq.
 +pandas>=2.2
@@ -1671,14 +1750,14 @@ index 0000000..2931838
 +openpyxl>=3.1.5
 +# holidays gives the cantonal public holidays. Pinned exactly: its holiday data decides labels.
 +holidays==0.108
-diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/tests/__init__.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/tests/__init__.py
-new file mode 100644
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/tests/__init__.py b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/tests/__init__.py
+new file mode 100755
 index 0000000..e69de29
-diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/tests/test_connector.py b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/tests/test_connector.py
-new file mode 100644
-index 0000000..188ea1a
+diff --git a/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/tests/test_connector.py b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/tests/test_connector.py
+new file mode 100755
+index 0000000..9f1262c
 --- /dev/null
-+++ b/packages/timenet-connectors/src/timenet_connectors/datasets/aionic/swiss_grid_anomaly_cot/tests/test_connector.py
++++ b/packages/timenet-connectors/src/timenet_connectors/datasets/scooby_team/swiss_grid_anomaly_cot/tests/test_connector.py
 @@ -0,0 +1,161 @@
 +from datetime import UTC, datetime
 +import json
@@ -1694,14 +1773,14 @@ index 0000000..188ea1a
 +from timenet.testing import assert_datasets_equal
 +from timenet.types import AnswerTask, ClassificationTask, Split, TemporalLocalizationTask
 +from timenet.types.text import read_value
-+from timenet_connectors.datasets.aionic.swiss_grid_anomaly_cot._pipeline import swissgrid
-+from timenet_connectors.datasets.aionic.swiss_grid_anomaly_cot._pipeline.swissgrid import (
++from timenet_connectors.datasets.scooby_team.swiss_grid_anomaly_cot._pipeline import swissgrid
++from timenet_connectors.datasets.scooby_team.swiss_grid_anomaly_cot._pipeline.swissgrid import (
 +    SwissgridFormatError,
 +    labels_to_utc_start,
 +    parse_labels,
 +)
-+from timenet_connectors.datasets.aionic.swiss_grid_anomaly_cot._pipeline.timefields import field, normalize
-+from timenet_connectors.datasets.aionic.swiss_grid_anomaly_cot.connector import (
++from timenet_connectors.datasets.scooby_team.swiss_grid_anomaly_cot._pipeline.timefields import field, normalize
++from timenet_connectors.datasets.scooby_team.swiss_grid_anomaly_cot.connector import (
 +    CAUSE,
 +    GRID_SIGNALS,
 +    SwissGridAnomalyCotConnector,

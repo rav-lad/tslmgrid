@@ -14,7 +14,7 @@ REPO = Path(__file__).resolve().parents[1]
 SRC = REPO / "src" / "swissgrid_cot"
 CONNECTOR = (
     REPO / "ext" / "TimeNet" / "packages" / "timenet-connectors" / "src" / "timenet_connectors" / "datasets"
-    / "aionic" / "swiss_grid_anomaly_cot"
+    / "scooby_team" / "swiss_grid_anomaly_cot"
 )  # fmt: skip
 TIMENET = REPO / "ext" / "TimeNet"
 MODULES = {

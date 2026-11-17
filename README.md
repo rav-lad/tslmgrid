@@ -2,7 +2,7 @@
 
 Explain anomalies in Swiss electricity consumption in natural language with a fine-tuned
 time-series language model (OpenTSLM). The project also contributes the dataset
-`aionic/swiss-grid-anomaly-cot` to TimeNet (TimeNet hackathon, Round 1).
+`scooby-team/swiss-grid-anomaly-cot` to TimeNet (TimeNet hackathon, Round 1).
 
 Every label is computed by transparent rules from real public data. No label comes from an LLM.
 
@@ -27,7 +27,7 @@ clone of TimeNet in `ext/TimeNet` (branch `feature/swiss-grid-anomaly-cot`, or a
 ```bash
 uv run python scripts/sync_connector.py            # copy the pipeline into the TimeNet connector
 # from ext/TimeNet:
-PYTHONUTF8=1 uv run --no-sync timenet-build build aionic/swiss-grid-anomaly-cot --local-registry ../../scratch/registry
+PYTHONUTF8=1 uv run --no-sync timenet-build build scooby-team/swiss-grid-anomaly-cot --local-registry ../../scratch/registry
 # from this repository, to export the samples as TimeNet publishes them instead of from windows.jsonl:
 uv run --with-editable ext/TimeNet/packages/timenet sgcot-export --registry scratch/registry
 ```

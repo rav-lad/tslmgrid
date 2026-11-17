@@ -27,7 +27,7 @@ import pandas as pd
 from swissgrid_cot.annotate.causes import CAUSES
 from swissgrid_cot.sources import PROCESSED_DIR
 
-DATASET = "aionic/swiss-grid-anomaly-cot"
+DATASET = "scooby-team/swiss-grid-anomaly-cot"
 OUT = PROCESSED_DIR / "opentslm"
 
 SERIES = {
