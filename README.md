@@ -21,8 +21,9 @@ uv run pytest              # 31 tests: parsing, DST, alignment, leakage, number 
 ```
 
 `uv sync` needs nothing but this repository. The TimeNet dataset is a separate step, run from a
-clone of TimeNet in `ext/TimeNet` (branch `feature/swiss-grid-anomaly-cot`, or apply
-`connector/timenet-swiss-grid-anomaly-cot.patch`):
+clone of TimeNet in `ext/TimeNet` (branch `feature/swiss-grid-anomaly-cot` of
+`rav-lad/TimeNet`, proposed upstream as [OpenTSLM/TimeNet#795](https://github.com/OpenTSLM/TimeNet/pull/795),
+or apply `connector/timenet-swiss-grid-anomaly-cot.patch`):
 
 ```bash
 uv run python scripts/sync_connector.py            # copy the pipeline into the TimeNet connector
@@ -128,7 +129,7 @@ The data's authenticity is verified against independent references in `reports/d
 | 1 Explore | done |
 | 2 Ingest | done, tested (DST, both label conventions, column mapping) |
 | 3 Annotate | done, tested (leakage, rules, number check) |
-| 4 TimeNet connector | builds in isolation and round-trips through the client; ruff, ty (3.13 and 3.11) and connector tests pass. Not yet committed or opened as a PR. |
+| 4 TimeNet connector | `scooby-team/swiss-grid-anomaly-cot`, opened as [OpenTSLM/TimeNet#795](https://github.com/OpenTSLM/TimeNet/pull/795) (awaiting review). ruff, ty (3.13 and 3.11), pre-commit, `make test`, `make test-connectors` and `make license-check` pass. A full `timenet-build build` from the PR commit downloads the sources, builds in about a minute and reads back 312 records (9 signals each) and 936 tasks. |
 | Training prep | export (2,823 train with `--normal-stride 4`, 4,365 without / 156 val / 156 test samples, no TimeNet needed), OpenTSLM stage 6, dataset class and epoch selection |
 | Evaluation | metrics, non-learned baselines and `sgcot-score` for model predictions done; zero-shot LLM baseline and LLM judge need an API key |
 | 5 Fine-tune | Llama 3.2 1B, OpenTSLMSP, 1 L40S, 6 runs (below). The model beats the baselines on the exchange task, not on the anomalous days |
