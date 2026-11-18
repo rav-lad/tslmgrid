@@ -3,6 +3,54 @@
     "sha256": "cdba85b6e2a055751b0599e2995103a31c0e0ade9ed2337ca48384caca2be4e5",
     "url": "https://www.pxweb.bfs.admin.ch/api/v1/de/px-x-0102010000_101/px-x-0102010000_101.px"
   },
+  "meteoswiss-recent/BAS": {
+    "sha256": "556b969fcda1819d3e1b7d6192e3f48edec9ae2951b41a3212b7ab178f20a44b",
+    "url": "https://data.geo.admin.ch/ch.meteoschweiz.ogd-smn/bas/ogd-smn_bas_h_recent.csv"
+  },
+  "meteoswiss-recent/BER": {
+    "sha256": "3b9d10168bfa24ee3e9ef352d5167453f6c324ee2874ad1fb9b0f2d69ea8b6a9",
+    "url": "https://data.geo.admin.ch/ch.meteoschweiz.ogd-smn/ber/ogd-smn_ber_h_recent.csv"
+  },
+  "meteoswiss-recent/BUS": {
+    "sha256": "d76c1cd97f997e4eb7b369f2c73d99767a83b23a9e08b0f5c3efab1fe29ca558",
+    "url": "https://data.geo.admin.ch/ch.meteoschweiz.ogd-smn/bus/ogd-smn_bus_h_recent.csv"
+  },
+  "meteoswiss-recent/CHU": {
+    "sha256": "f495ec4d8b58403613a66cbbd166773ee84cfde02dae316ed2135eba66eeda3e",
+    "url": "https://data.geo.admin.ch/ch.meteoschweiz.ogd-smn/chu/ogd-smn_chu_h_recent.csv"
+  },
+  "meteoswiss-recent/GVE": {
+    "sha256": "212d238ac6fe4c2a508526ead15f8f0da4cad7689425bb218d42ae94bb12191e",
+    "url": "https://data.geo.admin.ch/ch.meteoschweiz.ogd-smn/gve/ogd-smn_gve_h_recent.csv"
+  },
+  "meteoswiss-recent/LUG": {
+    "sha256": "9d67930eb07e375a2e30cbdc02eea5b9989be43b3fce1276d308ff45656f9576",
+    "url": "https://data.geo.admin.ch/ch.meteoschweiz.ogd-smn/lug/ogd-smn_lug_h_recent.csv"
+  },
+  "meteoswiss-recent/LUZ": {
+    "sha256": "eae04e1bd2daa41f861a27a8ab72e1d178922489bca4d7d223bd874edbf37b6f",
+    "url": "https://data.geo.admin.ch/ch.meteoschweiz.ogd-smn/luz/ogd-smn_luz_h_recent.csv"
+  },
+  "meteoswiss-recent/NEU": {
+    "sha256": "9485696524e219f6bab308ca31f3099b9237d5d5478c70035079d081e526fd9c",
+    "url": "https://data.geo.admin.ch/ch.meteoschweiz.ogd-smn/neu/ogd-smn_neu_h_recent.csv"
+  },
+  "meteoswiss-recent/PUY": {
+    "sha256": "2ae81438c5d4f303adaf7216d117b4f0c86e27e0f9ffa950822ba6e33eee47af",
+    "url": "https://data.geo.admin.ch/ch.meteoschweiz.ogd-smn/puy/ogd-smn_puy_h_recent.csv"
+  },
+  "meteoswiss-recent/SIO": {
+    "sha256": "229cd582e4722d56f2e13983d8a6a659fd4aac57ae4ba7c7bf2b1f41006b24ec",
+    "url": "https://data.geo.admin.ch/ch.meteoschweiz.ogd-smn/sio/ogd-smn_sio_h_recent.csv"
+  },
+  "meteoswiss-recent/SMA": {
+    "sha256": "530b37f59e5469b30209426c1278ba1fa74ab86598e0f31627c8cf394a37d44a",
+    "url": "https://data.geo.admin.ch/ch.meteoschweiz.ogd-smn/sma/ogd-smn_sma_h_recent.csv"
+  },
+  "meteoswiss-recent/STG": {
+    "sha256": "d4f753abff9bac86704820cd7d32a97a728a7f49fc916b83cba545807c717e97",
+    "url": "https://data.geo.admin.ch/ch.meteoschweiz.ogd-smn/stg/ogd-smn_stg_h_recent.csv"
+  },
   "meteoswiss/BAS": {
     "sha256": "19d5ef8c633b31e586f0090f80f0571d23664ed0afa80b33b92e73ad9104090b",
     "url": "https://data.geo.admin.ch/ch.meteoschweiz.ogd-smn/bas/ogd-smn_bas_h_historical_2020-2029.csv"
@@ -74,5 +122,9 @@
   "swissgrid/2025": {
     "sha256": "48ba9c57086fc0f00c96ba5cf7f449b0f51fd098451783bc4f3c36628a2944de",
     "url": "https://www.swissgrid.ch/dam/jcr:bbbbadc6-3656-4dfe-b81e-bbb9ad01be79/EnergieUebersichtCH-2025.xlsx"
+  },
+  "swissgrid/2026": {
+    "sha256": "318631e66852431a7d1ddd662375e55b69b7d79d6cd7cc68a70502d15ce801b7",
+    "url": "https://www.swissgrid.ch/dam/jcr:805e525c-44fe-4701-a227-6144193257ac/EnergieUebersichtCH-2026.xlsx"
   }
 }

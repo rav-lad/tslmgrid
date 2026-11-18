@@ -12,6 +12,10 @@ PROCESSED_DIR = REPO_ROOT / "data" / "processed"
 LOCK_PATH = REPO_ROOT / "sources.lock.json"
 
 YEARS = range(2020, 2026)
+HOLDOUT_YEAR = 2026
+"""The current year, published so far (Swissgrid to 31 October 2026). Only the alert review reads it,
+as an evaluation year nobody inspected while the review was designed. TimeNet and the weekly tasks
+stay on 2020-2025."""
 
 
 @dataclass(frozen=True)
@@ -28,6 +32,7 @@ _SWISSGRID_JCR = {
     2023: "32576046-3686-4a62-bc32-9b55a89a2142",
     2024: "4d4ca899-395d-4d3d-9958-5ace16ecbfbf",
     2025: "bbbbadc6-3656-4dfe-b81e-bbb9ad01be79",
+    2026: "805e525c-44fe-4701-a227-6144193257ac",
 }
 
 
@@ -47,6 +52,16 @@ def meteoswiss_file(station: str) -> SourceFile:
     name = f"ogd-smn_{station.lower()}_h_historical_2020-2029.csv"
     return SourceFile(
         key=f"meteoswiss/{station}",
+        url=f"{_SMN}/{station.lower()}/{name}",
+        path=RAW_DIR / "meteoswiss" / name,
+    )
+
+
+def meteoswiss_recent_file(station: str) -> SourceFile:
+    """1 January of the current year to yesterday. MeteoSwiss moves it into the historical file yearly."""
+    name = f"ogd-smn_{station.lower()}_h_recent.csv"
+    return SourceFile(
+        key=f"meteoswiss-recent/{station}",
         url=f"{_SMN}/{station.lower()}/{name}",
         path=RAW_DIR / "meteoswiss" / name,
     )
@@ -82,3 +97,7 @@ def all_sources() -> list[SourceFile]:
         *(meteoswiss_file(s) for s in STATION_CANTONS),
         BFS_POPULATION,
     ]
+
+
+def holdout_sources() -> list[SourceFile]:
+    return [swissgrid_file(HOLDOUT_YEAR), *(meteoswiss_recent_file(s) for s in STATION_CANTONS)]

@@ -1,0 +1,8 @@
+| group                      | system       |   n |   parsable |   outcome_acc |   outcome_macro_f1 |   profile_acc |   concentrated_acc |   hours_f1 |   day_residual_mae_pp | follows_curve   | follows_text   |
+|:---------------------------|:-------------|----:|-----------:|--------------:|-------------------:|--------------:|-------------------:|-----------:|----------------------:|:----------------|:---------------|
+| validation/real/flagged    | context only |  23 |      1     |         0.826 |              0.452 |         0.647 |              0.652 |          0 |                   nan |                 |                |
+| validation/real/flagged    | hourly rules |  23 |      1     |         1     |              1     |         1     |              1     |          1 |                     0 |                 |                |
+| validation/real/near-alert | context only |  23 |      0.913 |         0.478 |              0.348 |         0.857 |              0.217 |          0 |                   nan |                 |                |
+| validation/real/near-alert | hourly rules |  23 |      1     |         1     |              1     |         1     |              1     |          1 |                     0 |                 |                |
+| validation/simulated       | context only |  87 |      1     |         0.448 |              0.426 |         0.975 |              0.414 |          0 |                   nan |                 |                |
+| validation/simulated       | hourly rules |  87 |      1     |         1     |              1     |         1     |              1     |          1 |                     0 |                 |                |

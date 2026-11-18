@@ -4,6 +4,7 @@ Usage::
 
     uv run sgcot-download                 # fetch missing files, verify all digests
     uv run sgcot-download --update-lock   # record the digests of the files on disk
+    uv run sgcot-download --holdout       # the 2026 files of the alert review instead
 
 A digest mismatch means the publisher revised a file (Swissgrid and MeteoSwiss both do). The run
 then stops, so a revision is a deliberate decision, never a silent change of the data.
@@ -16,7 +17,7 @@ import sys
 
 import requests
 
-from swissgrid_cot.sources import BFS_POPULATION, BFS_QUERY, LOCK_PATH, SourceFile, all_sources
+from swissgrid_cot.sources import BFS_POPULATION, BFS_QUERY, LOCK_PATH, SourceFile, all_sources, holdout_sources
 
 _HEADERS = {"User-Agent": "swissgrid-cot/0.1 (research dataset build)"}
 
@@ -44,11 +45,12 @@ def fetch(source: SourceFile) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--update-lock", action="store_true", help="write the digests of the files on disk")
+    parser.add_argument("--holdout", action="store_true", help="the 2026 files of the alert review")
     args = parser.parse_args()
 
     lock = json.loads(LOCK_PATH.read_text()) if LOCK_PATH.exists() else {}
     problems = []
-    for source in all_sources():
+    for source in holdout_sources() if args.holdout else all_sources():
         if not source.path.exists():
             print(f"downloading {source.key} <- {source.url}")
             fetch(source)

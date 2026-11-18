@@ -20,8 +20,12 @@ dev = [
 [project.scripts]
 sgcot-download = "swissgrid_cot.download:main"
 sgcot-ingest = "swissgrid_cot.ingest.build:main"
+sgcot-ingest-holdout = "swissgrid_cot.ingest.holdout:main"
 sgcot-annotate = "swissgrid_cot.annotate.build:main"
 sgcot-export = "swissgrid_cot.train.export:main"
+sgcot-review = "swissgrid_cot.review.build:main"
+sgcot-review-export = "swissgrid_cot.review.export:main"
+sgcot-review-score = "swissgrid_cot.review.score:main"
 sgcot-baselines = "swissgrid_cot.eval.baselines:main"
 sgcot-score = "swissgrid_cot.eval.score:main"
 
