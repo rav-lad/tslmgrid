@@ -156,9 +156,15 @@ class ReferenceBuilder:
             )  # fmt: skip
             return list(self.days.index[mask]), (
                 f"{DAYTYPE_TEXT[d.daytype]} days of earlier summer holidays, within {SUMMER_DOY_WINDOW} days of the date")
+        return self.regular_dates(date)
+
+    def regular_dates(self, date: pd.Timestamp) -> tuple[list[pd.Timestamp], str]:
+        """Ordinary days of the regular period comparable with D, whatever D's own calendar."""
+        d = self.days.loc[date]
+        same_type = (self.days.daytype == d.daytype).to_numpy()
         near = (_circular_doy_distance(self.doy, self.doy[self.days.index.get_loc(date)]) <= ORDINARY_DOY_WINDOW) | (
             self.days.index >= date - pd.Timedelta(days=ORDINARY_RECENT_DAYS))
-        base = before & same_type & self.ordinary.to_numpy() & near
+        base = self._before(date) & same_type & self.ordinary.to_numpy() & near
         dt = np.abs(self.days.temp_c.to_numpy() - d.temp_c)
         for window in TEMP_WINDOW_C:
             mask = base & (dt <= window)
@@ -194,6 +200,14 @@ class ReferenceBuilder:
         dates, how = self.ordinary_dates(date)
         need = MIN_COMPARABLE if self.days.at[date, "period"] != "regular" else MIN_COMPARABLE_ORDINARY
         return Reference(self._curve(date, dates), dates, how, len(dates) >= need, need)
+
+    def blind_normal(self, date: pd.Timestamp) -> Reference:
+        """What an ordinary day of D's weekday type, time of year and temperature looks like, built the same way
+        for every day: a holiday, a Christmas or a summer day is compared with ordinary days of the regular
+        period. Nothing in it depends on D's calendar."""
+        dates, how = self.regular_dates(date)
+        return Reference(self._curve(date, dates), dates, how, len(dates) >= MIN_COMPARABLE_ORDINARY,
+                         MIN_COMPARABLE_ORDINARY)  # fmt: skip
 
     def context(self, date: pd.Timestamp) -> Reference:
         """What D's calendar context predicts: the reference the review compares the day with."""
