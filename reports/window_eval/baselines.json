@@ -1,0 +1,142 @@
+[
+ {
+  "group": "holdout 2026 / perturbations",
+  "system": "threshold",
+  "n": 80,
+  "answered_yes": 0.75,
+  "accuracy": 0.75,
+  "recall_drop": 0.591,
+  "recall_spike": 0.829,
+  "recall_level_shift": 0.783,
+  "recall_10-15%": 0.286,
+  "recall_15-20%": 0.846,
+  "recall_20-25%": 0.8,
+  "recall_25-36%": 0.771
+ },
+ {
+  "group": "holdout 2026 / real ordinary days, labelled no",
+  "system": "threshold",
+  "n": 247,
+  "answered_yes": 0.008,
+  "accuracy": 0.992
+ },
+ {
+  "group": "holdout 2026 / real special days, labelled no",
+  "system": "threshold",
+  "n": 46,
+  "answered_yes": 0.457,
+  "accuracy": 0.543
+ },
+ {
+  "group": "holdout 2026 / real, labelled yes",
+  "system": "threshold",
+  "n": 11,
+  "answered_yes": 1.0,
+  "accuracy": 1.0
+ },
+ {
+  "group": "test 2025 / perturbations",
+  "system": "threshold",
+  "n": 80,
+  "answered_yes": 0.725,
+  "accuracy": 0.725,
+  "recall_drop": 0.667,
+  "recall_spike": 0.7,
+  "recall_level_shift": 0.882,
+  "recall_10-15%": 0.833,
+  "recall_15-20%": 0.588,
+  "recall_20-25%": 0.739,
+  "recall_25-36%": 0.765
+ },
+ {
+  "group": "test 2025 / real ordinary days, labelled no",
+  "system": "threshold",
+  "n": 302,
+  "answered_yes": 0.0,
+  "accuracy": 1.0
+ },
+ {
+  "group": "test 2025 / real special days, labelled no",
+  "system": "threshold",
+  "n": 57,
+  "answered_yes": 0.561,
+  "accuracy": 0.439
+ },
+ {
+  "group": "test 2025 / real, labelled yes",
+  "system": "threshold",
+  "n": 6,
+  "answered_yes": 1.0,
+  "accuracy": 1.0
+ },
+ {
+  "group": "holdout 2026 / perturbations",
+  "system": "rules",
+  "n": 80,
+  "answered_yes": 0.6,
+  "accuracy": 0.6,
+  "recall_drop": 0.318,
+  "recall_spike": 0.829,
+  "recall_level_shift": 0.522,
+  "recall_10-15%": 0.143,
+  "recall_15-20%": 0.692,
+  "recall_20-25%": 0.64,
+  "recall_25-36%": 0.629
+ },
+ {
+  "group": "holdout 2026 / real ordinary days, labelled no",
+  "system": "rules",
+  "n": 247,
+  "answered_yes": 0.0,
+  "accuracy": 1.0
+ },
+ {
+  "group": "holdout 2026 / real special days, labelled no",
+  "system": "rules",
+  "n": 46,
+  "answered_yes": 0.0,
+  "accuracy": 1.0
+ },
+ {
+  "group": "holdout 2026 / real, labelled yes",
+  "system": "rules",
+  "n": 11,
+  "answered_yes": 1.0,
+  "accuracy": 1.0
+ },
+ {
+  "group": "test 2025 / perturbations",
+  "system": "rules",
+  "n": 80,
+  "answered_yes": 0.537,
+  "accuracy": 0.537,
+  "recall_drop": 0.364,
+  "recall_spike": 0.533,
+  "recall_level_shift": 0.882,
+  "recall_10-15%": 0.833,
+  "recall_15-20%": 0.353,
+  "recall_20-25%": 0.565,
+  "recall_25-36%": 0.559
+ },
+ {
+  "group": "test 2025 / real ordinary days, labelled no",
+  "system": "rules",
+  "n": 302,
+  "answered_yes": 0.0,
+  "accuracy": 1.0
+ },
+ {
+  "group": "test 2025 / real special days, labelled no",
+  "system": "rules",
+  "n": 57,
+  "answered_yes": 0.0,
+  "accuracy": 1.0
+ },
+ {
+  "group": "test 2025 / real, labelled yes",
+  "system": "rules",
+  "n": 6,
+  "answered_yes": 1.0,
+  "accuracy": 1.0
+ }
+]

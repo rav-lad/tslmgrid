@@ -16,6 +16,7 @@ mean of the validation outcome macro F1, the F1 over the hours under review and 
 
 ``--task day_signature`` selects on the day-signature samples (``sgcot-explain-export``): the validation
 macro F1 of the label after the last 'Answer:', parsed as ``swissgrid_cot.explain.samples.parse_answer`` does.
+``--task window_review`` (``sgcot-window-export``) selects on the validation macro F1 of yes / no.
 """
 
 import argparse
@@ -108,6 +109,20 @@ SIGNATURE = re.compile(r"Answer:\s*([a-z_]+)")
 def signature_score(samples: list, preds: list[str], targets: dict[str, dict]) -> tuple[float, str]:
     gold = [targets[s["id"]]["label"] for s in samples]
     pred = [(SIGNATURE.findall(p) or [None])[-1] for p in preds]
+    return label_f1(gold, pred)
+
+
+WINDOW = re.compile(r"Answer:\s*(yes|no)\b")
+
+
+def window_score(samples: list, preds: list[str], targets: dict[str, dict]) -> tuple[float, str]:
+    gold = ["yes" if targets[s["id"]]["investigate"] else "no" for s in samples]
+    pred = [(WINDOW.findall(p) or [None])[-1] for p in preds]
+    return label_f1(gold, pred)
+
+
+def label_f1(gold: list[str], pred: list[str | None]) -> tuple[float, str]:
+    """Macro F1 over the gold labels, and the accuracy."""
     f1s = []
     for lab in sorted(set(gold)):
         tp = sum(g == lab and q == lab for g, q in zip(gold, pred))
@@ -124,7 +139,7 @@ def main() -> None:
     parser.add_argument("--out", required=True, help="test predictions to write (jsonl)")
     parser.add_argument("--llm-id", default="meta-llama/Llama-3.2-1B")
     parser.add_argument("--max-new-tokens", type=int, default=600)
-    parser.add_argument("--task", default="anomaly_days", choices=("anomaly_days", "alert_review", "day_signature"))
+    parser.add_argument("--task", default="anomaly_days", choices=("anomaly_days", "alert_review", "day_signature", "window_review"))
     args = parser.parse_args()
 
     root = os.environ["SWISSGRID_COT_DIR"]
@@ -155,8 +170,8 @@ def main() -> None:
             continue
         model.load_from_file(path)
         preds = generate(model, val, args.max_new_tokens)
-        if args.task in ("alert_review", "day_signature"):
-            fn = review_score if args.task == "alert_review" else signature_score
+        if args.task in ("alert_review", "day_signature", "window_review"):
+            fn = {"alert_review": review_score, "day_signature": signature_score, "window_review": window_score}[args.task]
             scores[path], detail = fn(val, preds, targets)
             print(f"{os.path.basename(path)}: validation score {scores[path]:.3f} ({detail})", flush=True)
         else:
@@ -169,7 +184,8 @@ def main() -> None:
     best = max(paths, key=lambda p: (scores[p], -paths.index(p)))  # ties: the earlier epoch
     print(f"selected {os.path.basename(best)}", flush=True)
     with open(os.path.join(os.path.dirname(args.out), "selection.json"), "w", encoding="utf-8") as f:
-        key = {"alert_review": "validation_review_score", "day_signature": "validation_macro_f1"}.get(
+        key = {"alert_review": "validation_review_score", "day_signature": "validation_macro_f1",
+               "window_review": "validation_macro_f1"}.get(
             args.task, "validation_day_f1")
         json.dump({"selected": os.path.basename(best), key: {
             os.path.basename(p): round(s, 4) for p, s in scores.items()}}, f, indent=1)

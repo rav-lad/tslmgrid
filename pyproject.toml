@@ -29,6 +29,8 @@ sgcot-review-score = "swissgrid_cot.review.score:main"
 sgcot-explain-export = "swissgrid_cot.explain.export:main"
 sgcot-explain-score = "swissgrid_cot.explain.score:main"
 sgcot-explain-fidelity = "swissgrid_cot.explain.fidelity:main"
+sgcot-window-export = "swissgrid_cot.window.export:main"
+sgcot-window-score = "swissgrid_cot.window.score:main"
 sgcot-baselines = "swissgrid_cot.eval.baselines:main"
 sgcot-score = "swissgrid_cot.eval.score:main"
 
