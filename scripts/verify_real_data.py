@@ -18,7 +18,6 @@ import openpyxl
 import pandas as pd
 import requests
 
-from swissgrid_cot.ingest import swissgrid
 from swissgrid_cot.sources import PROCESSED_DIR, RAW_DIR, REPO_ROOT, YEARS, swissgrid_file
 
 EXT = RAW_DIR / "external"

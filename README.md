@@ -180,7 +180,7 @@ selected with `select_epoch.py` (day F1) and scored with `sgcot-baselines` and `
 
 | Source | What | License |
 | --- | --- | --- |
-| Swissgrid, Energy Statistic Switzerland 2020-2026 | Quarter-hourly consumption, production, cross-border exchange (kWh) | **None stated**: the card says `NONE`. Terms are being confirmed with Swissgrid. |
+| Swissgrid, Energy Statistic Switzerland 2020-2026 | Quarter-hourly consumption, production, cross-border exchange (kWh) | **None stated**: the card says `NONE`. Swissgrid publishes the files openly without license terms; the raw data is not redistributed here (the build downloads it). |
 | MeteoSwiss SwissMetNet (12 stations) | Hourly temperature and global radiation | CC BY 4.0 |
 | BFS STATPOP 2023 | Population per canton (weights) | Open data |
 | `holidays` 0.108 | Cantonal public holidays | MIT |
