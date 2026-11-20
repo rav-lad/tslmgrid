@@ -1,6 +1,6 @@
 # Swiss Load Alert Review
 
-**Understand what changed in the numbers when Swiss electricity consumption stops looking like a
+**Understand what changed in the numbers when electricity consumption stops looking like a
 normal day.**
 
 When the national load leaves its expected level, the tool flags the day, compares its 24 hours with
@@ -11,7 +11,6 @@ checks).
 
 ![From a curve to a decision](docs/pipeline.svg)
 
-- **User:** an electricity demand analyst reviewing yesterday's Swiss load.
 - **Question:** what happened in the numbers, and is it worth acting on?
 - **The model reads the data.** Its review comes from the curve set against comparable days: the
   hours, the size of the gap and the shape of the day are measured, not guessed from outside
@@ -30,10 +29,6 @@ On the 2026 holdout (January-October, never seen while the tool was designed):
 | Measures the day's gap against comparable days (mean error) | **0.8 pp** |
 | Right verdict on near-alerts, just below the detector's threshold | **89 %** (31 % from the context alone) |
 
-The review kept **5 real anomalies** among the 11 days flagged in 2026, all above expectation, which
-no day of 2020-2025 was: 10-11 January (+11 % and +9 %), Good Friday (+7 %), 1 July (+7 %,
-04:00-13:59) and 25 October (+8 %, a Sunday shaped like a Saturday). Scores in
-`reports/review_eval/opentslm-review-1b_test.md`.
 
 The model is OpenTSLM stage 6 (Llama 3.2 1B) fine-tuned on 1,402 reviews of 2020-2023, real days and
 simulated deviations, with the epoch selected on 2024.
@@ -81,7 +76,7 @@ whether a residual stays in a few hours after that comparison.
 | Kontur Population 2023 (demo) | Population per H3 cell (resolution 8) | CC BY 4.0 |
 | FSO generalized boundaries 2021, via `swiss-maps` 4.5.0 (demo) | Country, canton and lake outlines | FSO open data, with attribution |
 
-Time handling, checked on the real files (see `docs/phase1_exploration.md`):
+Time handling, checked on the real files :
 
 - Swissgrid writes Swiss civil time. In 2020-2024 each label is the **end** of its quarter hour; in
   2025 and 2026 it is the **start**. 2020 writes the fall-back instant as 03:00 CEST; 2021-2024 write
@@ -93,7 +88,7 @@ Time handling, checked on the real files (see `docs/phase1_exploration.md`):
   The review reads each day as 24 local hours (the spring-forward 02:00 is interpolated, the two
   fall-back 02:00 hours are averaged).
 
-The data's authenticity is verified against independent references in `reports/data_verification.md`:
+The data's authenticity is verified against independent references:
 Swissgrid's own annual totals match to 1e-15 for 2021-2025; Energy-Charts / ENTSO-E net import
 r = 0.99 and load r = 1.000 in 2020 and 2022; MeteoSwiss's own daily means match to 0.03 °C on average.
 
@@ -158,5 +153,5 @@ uv run pytest
 
 Fine-tuning: apply `train/opentslm-stage6-swissgrid-cot.patch` to OpenTSLM (commit `2968f4b`), start
 stage 6 from the stage 5 checkpoint `OpenTSLM/llama-3.2-1b-ecg-sp`, train on
-`data/processed/opentslm_review/` (about 20 minutes on one L40S), then pick the epoch with
+`data/processed/opentslm_review/` , then pick the epoch with
 `train/select_epoch.py` and score with `sgcot-review-score`.
