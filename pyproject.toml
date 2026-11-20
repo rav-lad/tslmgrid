@@ -21,18 +21,11 @@ dev = [
 sgcot-download = "swissgrid_cot.download:main"
 sgcot-ingest = "swissgrid_cot.ingest.build:main"
 sgcot-ingest-holdout = "swissgrid_cot.ingest.holdout:main"
+sgcot-ingest-zones = "swissgrid_cot.ingest.zones:main"
 sgcot-annotate = "swissgrid_cot.annotate.build:main"
-sgcot-export = "swissgrid_cot.train.export:main"
 sgcot-review = "swissgrid_cot.review.build:main"
 sgcot-review-export = "swissgrid_cot.review.export:main"
 sgcot-review-score = "swissgrid_cot.review.score:main"
-sgcot-explain-export = "swissgrid_cot.explain.export:main"
-sgcot-explain-score = "swissgrid_cot.explain.score:main"
-sgcot-explain-fidelity = "swissgrid_cot.explain.fidelity:main"
-sgcot-window-export = "swissgrid_cot.window.export:main"
-sgcot-window-score = "swissgrid_cot.window.score:main"
-sgcot-baselines = "swissgrid_cot.eval.baselines:main"
-sgcot-score = "swissgrid_cot.eval.score:main"
 
 [build-system]
 requires = ["uv_build>=0.12,<0.13"]

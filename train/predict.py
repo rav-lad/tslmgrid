@@ -5,7 +5,7 @@ Run from an OpenTSLM checkout that has the stage 6 patch, with ``SWISSGRID_COT_D
     uv run python predict.py <epoch_N.pt> <out.jsonl> [--device cpu] [--skip <earlier predictions.jsonl> ...]
 
 Writes one ``{sample_id, generated, gold}`` line per test sample, flushed as it goes. A 1B model on
-16 CPU cores takes about 15 s per weekly sample.
+16 CPU cores takes about 15 s per review sample.
 """
 
 import argparse

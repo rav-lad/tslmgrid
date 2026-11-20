@@ -1,5 +1,5 @@
 diff --git a/curriculum_learning.py b/curriculum_learning.py
-index 4b25fe2..28869a6 100644
+index 4b25fe2..e6b4037 100644
 --- a/curriculum_learning.py
 +++ b/curriculum_learning.py
 @@ -13,6 +13,7 @@ from typing import List, Optional, Dict, Any, Callable
@@ -100,7 +100,7 @@ index 4b25fe2..28869a6 100644
 +        - OpenTSLMSP: encoder_lr=1e-4, projector_lr=5e-5 (LoRA follows the projector rate)
 +        - OpenTSLMFlamingo: base_lr=1e-4
 +        - Metric: test loss; task metrics are computed by the swissgrid-cot evaluation.
-+        - SWISSGRID_COT_SEED, when set, seeds torch, numpy and random; SWISSGRID_COT_EPOCHS replaces the 6 epochs.
++        - SWISSGRID_COT_SEED, when set, seeds torch, numpy and random.
 +        """
 +        seed = os.environ.get("SWISSGRID_COT_SEED")
 +        if seed is not None:
@@ -115,7 +115,7 @@ index 4b25fe2..28869a6 100644
 +        return self._train_stage(
 +            stage_name="stage6_swissgrid_cot",
 +            dataset_class=SwissGridCoTQADataset,
-+            num_epochs=int(os.environ.get("SWISSGRID_COT_EPOCHS", "6")),
++            num_epochs=6,
 +            lr_encoder=1e-4,
 +            lr_projector=5e-5,
 +            lr_base=1e-4,
@@ -252,10 +252,10 @@ index 4e7735d..02f68c5 100644
          return self.tokenizer.eos_token
 diff --git a/src/opentslm/time_series_datasets/swissgrid/SwissGridCoTQADataset.py b/src/opentslm/time_series_datasets/swissgrid/SwissGridCoTQADataset.py
 new file mode 100644
-index 0000000..335504c
+index 0000000..f6eb709
 --- /dev/null
 +++ b/src/opentslm/time_series_datasets/swissgrid/SwissGridCoTQADataset.py
-@@ -0,0 +1,109 @@
+@@ -0,0 +1,100 @@
 +# SPDX-License-Identifier: MIT
 +"""Swiss Grid Anomaly-CoT: weekly Swiss power and weather series with rule-based explanations.
 +
@@ -334,22 +334,13 @@ index 0000000..335504c
 +        return row["post_prompt"]
 +
 +    def _get_text_time_series_prompt_list(self, row) -> List[TextTimeSeriesPrompt]:
-+        """Each series is z-normalized and its mean and std are written in the text. A series with
-+        ``scale_like`` (the name of an earlier series) is normalized with that series' mean and std
-+        instead, and the text says so: its level against that series stays in the values."""
-+        prompts, stats = [], {}
++        prompts = []
 +        for series in row["series"]:
 +            values = np.asarray(series["values"], dtype=np.float64)
-+            name = series["name"].lower()
-+            if series.get("scale_like"):
-+                mean, std = stats[series["scale_like"].lower()]
-+                text = (f"The following is the hourly {name} in {series['unit']}, on the same scale as the "
-+                        f"{series['scale_like'].lower()}:")
-+            else:
-+                mean = float(values.mean())
-+                std = max(float(values.std()), 1e-6)
-+                text = f"The following is the hourly {name} in {series['unit']}, it has mean {mean:.1f} and std {std:.1f}:"
-+            stats[name] = (mean, std)
++            mean = float(values.mean())
++            std = max(float(values.std()), 1e-6)
++            text = (f"The following is the hourly {series['name'].lower()} in {series['unit']}, "
++                    f"it has mean {mean:.1f} and std {std:.1f}:")
 +            prompts.append(TextTimeSeriesPrompt(text, ((values - mean) / std).tolist()))
 +        return prompts
 +
