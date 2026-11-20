@@ -1,18 +1,16 @@
-"""Select the stage 6 epoch on the validation day F1, then write its test predictions.
+"""Select the stage 6 epoch on the validation review score, then write its test predictions.
 
-The validation loss is dominated by the easy template tokens and does not follow the task metrics:
-the epoch it selects ranged from day F1 0.18 to 0.74 on the test year across runs. This script scores
-every ``epoch_N.pt`` (saved with ``OPENTSLM_SAVE_EVERY_EPOCH=1``) on the anomaly_days samples of the
-validation year, keeps the best, and generates the test predictions with it.
+The validation loss is dominated by the easy template tokens and does not follow the task metrics.
+This script scores every ``epoch_N.pt`` (saved with ``OPENTSLM_SAVE_EVERY_EPOCH=1``) on the
+alert-review samples of the validation year (``sgcot-review-export``), keeps the best, and generates
+the test predictions with it. The score is the mean of the outcome macro F1, the F1 over the hours
+under review and the profile accuracy (ties left out), parsed as
+``swissgrid_cot.review.samples.parse_answer`` does.
 
 Run from an OpenTSLM checkout that has the stage 6 patch, with ``SWISSGRID_COT_DIR`` set::
 
     uv run python select_epoch.py --checkpoints results/Llama_3_2_1B/OpenTSLMSP/stage6_swissgrid_cot/checkpoints \
         --out results/Llama_3_2_1B/OpenTSLMSP/stage6_swissgrid_cot/results/test_predictions.jsonl
-
-``--task alert_review`` selects on the alert-review samples (``sgcot-review-export``) instead: the
-mean of the validation outcome macro F1, the F1 over the hours under review and the profile accuracy
-(ties left out), parsed as ``swissgrid_cot.review.samples.parse_answer`` does.
 """
 
 import argparse
@@ -29,15 +27,6 @@ from opentslm.model_config import PATCH_SIZE
 from opentslm.time_series_datasets.swissgrid.SwissGridCoTQADataset import SwissGridCoTQADataset
 from opentslm.time_series_datasets.util import extend_time_series_to_match_patch_size_and_aggregate
 
-DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
-
-
-def days(text: str) -> set[str]:
-    """The dates after the last 'Answer:', as scored by swissgrid-cot (none or unparsable: no day)."""
-    cut = text.rfind("Answer:")
-    return set(DATE.findall(text[cut:])) if cut >= 0 else set()
-
-
 def generate(model, samples: list, max_new_tokens: int) -> list[str]:
     loader = DataLoader(  # batch size 1, as OpenTSLM's evaluation: no padding inside a batch
         samples, batch_size=1, shuffle=False,
@@ -48,15 +37,6 @@ def generate(model, samples: list, max_new_tokens: int) -> list[str]:
         for batch in loader:
             out += model.generate(batch, max_new_tokens=max_new_tokens)
     return out
-
-
-def day_f1(samples: list, preds: list[str], targets: dict[str, list[str]]) -> tuple[float, int, int, int]:
-    tp = fp = fn = 0
-    for s, p in zip(samples, preds):
-        gold, pred = set(targets[s["id"]]), days(p)
-        tp, fp, fn = tp + len(gold & pred), fp + len(pred - gold), fn + len(gold - pred)
-    f1 = 2 * tp / (2 * tp + fp + fn) if tp else 0.0
-    return f1, tp, fp, fn
 
 
 REVIEW = re.compile(
@@ -102,12 +82,11 @@ def main() -> None:
     parser.add_argument("--out", required=True, help="test predictions to write (jsonl)")
     parser.add_argument("--llm-id", default="meta-llama/Llama-3.2-1B")
     parser.add_argument("--max-new-tokens", type=int, default=600)
-    parser.add_argument("--task", default="anomaly_days", choices=("anomaly_days", "alert_review"))
     args = parser.parse_args()
 
     root = os.environ["SWISSGRID_COT_DIR"]
     with open(os.path.join(root, "validation.jsonl"), encoding="utf-8") as f:
-        targets = {r["id"]: r["target"] for r in map(json.loads, f) if r["task"] == args.task}
+        targets = {r["id"]: r["target"] for r in map(json.loads, f) if r["task"] == "alert_review"}
 
     model = OpenTSLMSP(llm_id=args.llm_id, device="cuda")
     model.enable_lora(lora_r=16, lora_alpha=32, lora_dropout=0.0)  # as in curriculum_learning.py
@@ -122,18 +101,12 @@ def main() -> None:
     for path in paths:
         model.load_from_file(path)
         preds = generate(model, val, args.max_new_tokens)
-        if args.task == "alert_review":
-            scores[path], detail = review_score(val, preds, targets)
-            print(f"{os.path.basename(path)}: validation score {scores[path]:.3f} ({detail})", flush=True)
-            continue
-        f1, tp, fp, fn = day_f1(val, preds, targets)
-        scores[path] = f1
-        print(f"{os.path.basename(path)}: validation day F1 {f1:.3f} (tp={tp} fp={fp} fn={fn})", flush=True)
+        scores[path], detail = review_score(val, preds, targets)
+        print(f"{os.path.basename(path)}: validation score {scores[path]:.3f} ({detail})", flush=True)
     best = max(paths, key=lambda p: (scores[p], -paths.index(p)))  # ties: the earlier epoch
     print(f"selected {os.path.basename(best)}", flush=True)
     with open(os.path.join(os.path.dirname(args.out), "selection.json"), "w", encoding="utf-8") as f:
-        key = "validation_review_score" if args.task == "alert_review" else "validation_day_f1"
-        json.dump({"selected": os.path.basename(best), key: {
+        json.dump({"selected": os.path.basename(best), "validation_review_score": {
             os.path.basename(p): round(s, 4) for p, s in scores.items()}}, f, indent=1)
 
     model.load_from_file(best)

@@ -120,25 +120,3 @@ def test_number_check_catches_invented_numbers():
 
 def test_phrasing_is_deterministic():
     assert R.Phrasing("2024-W13").pick("a", "b", "c") == R.Phrasing("2024-W13").pick("a", "b", "c")
-
-
-def test_normal_stride_keeps_every_anomalous_window():
-    from swissgrid_cot.train.export import keep_rolling
-
-    windows = [{"window_id": "2020-W02", "anomalous_dates": []}] + [
-        {"window_id": f"2020-01-{d:02d}", "anomalous_dates": ["2020-01-10"] if d in (8, 9) else []}
-        for d in range(7, 15)
-    ]
-    kept = {w["window_id"]: tasks for w, tasks in keep_rolling(windows, normal_stride=3)}
-    assert "2020-W02" not in kept and len(kept) == 8
-    full = [k for k, tasks in kept.items() if "anomaly_days" in tasks]
-    assert full == ["2020-01-07", "2020-01-08", "2020-01-09", "2020-01-12"]
-    assert all(tasks == ["exchange"] for k, tasks in kept.items() if k not in full)
-    assert all("anomaly_days" in tasks for _, tasks in keep_rolling(windows, normal_stride=1))
-
-
-def test_total_import_is_the_sum_of_the_borders():
-    from swissgrid_cot.train.export import BORDER_SERIES, with_total_import
-
-    values = {n: [float(i), -1.0] for i, n in enumerate(BORDER_SERIES)}
-    assert with_total_import(values)["Net import (all borders)"] == [6.0, -4.0]

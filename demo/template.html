@@ -1,267 +1,438 @@
-<title>Swiss Load Alert Review</title>
+<title>Swiss Load Relief</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,500..800&family=Source+Sans+3:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-/* Layout: a year-by-week grid on top; the picked week's curves below it; the picked day's review last. */
+/* Layout: a full-bleed relief map of the country; the calendar floats top left, the day's review sits in a
+   right-hand column, the hour scrubber and legend float along the bottom. Below 860px everything stacks. */
 :root {
-  --bg: #f4f6f8;
-  --panel: #ffffff;
-  --ink: #17202b;
-  --muted: #5b6878;
-  --rule: #d9dfe6;
-  --load: #1f8a4c;
-  --ref: #8a95a3;
-  --hours-fill: rgba(214, 48, 49, 0.14);
-  --hours: #d63031;
-  --ok: #3f9a6b;
-  --ok-bg: #e2f2e9;
-  --warn: #d63031;
-  --warn-bg: #fbe3e3;
-  --unsure: #9aa6b4;
-  --unsure-bg: #e7ebef;
-  --f-display: "Archivo", "Arial Narrow", system-ui, sans-serif;
-  --f-body: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --bg: #eceae4;          /* map ground around the country */
+  --land: #f7f6f2;        /* the country */
+  --water: #c9d6df;
+  --border: #b9b5aa;      /* canton borders */
+  --panel: rgba(252, 251, 248, 0.92);
+  --panel-solid: #fcfbf8;
+  --line: #dcd8ce;
+  --ink: #1d1c1a;
+  --ink-2: #57544d;
+  --ink-3: #8a867c;
+  --down: #2a6fc4;        /* below normal */
+  --mid: #c8c5bc;         /* at normal */
+  --up: #d2462f;          /* above normal */
+  --flag: #c02f1d;        /* anomaly kept by the review */
+  --flag-soft: rgba(192, 47, 29, 0.12);
+  --ok: #4f7d5a;          /* explained by calendar and weather */
+  --unsure: #b9821b;      /* too few comparable days */
+  --focus: #2a6fc4;
+  --shadow: 0 1px 2px rgba(29, 28, 26, 0.08), 0 8px 24px rgba(29, 28, 26, 0.08);
+  --font-display: "Archivo", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Menlo, monospace;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0f151c; --panel: #17202a; --ink: #e6ebf0; --muted: #9aa7b6; --rule: #2a3542;
-    --load: #4fc483; --ref: #7d8896; --hours-fill: rgba(255, 107, 107, 0.16); --hours: #ff6b6b;
-    --ok: #4fae7f; --ok-bg: #173527; --warn: #ff6b6b; --warn-bg: #3d1a1a; --unsure: #66737f; --unsure-bg: #253039;
+    --bg: #0e1013; --land: #181b20; --water: #1d2a36; --border: #353a42;
+    --panel: rgba(20, 22, 26, 0.9); --panel-solid: #15171b; --line: #2b2f36;
+    --ink: #eceae4; --ink-2: #b4b0a6; --ink-3: #7f7b72;
+    --down: #4d93e8; --mid: #4a4d53; --up: #ec6a4c;
+    --flag: #f0634b; --flag-soft: rgba(240, 99, 75, 0.16); --ok: #7fb08a; --unsure: #e0a93f; --focus: #4d93e8;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 28px rgba(0, 0, 0, 0.35);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #0f151c; --panel: #17202a; --ink: #e6ebf0; --muted: #9aa7b6; --rule: #2a3542;
-  --load: #4fc483; --ref: #7d8896; --hours-fill: rgba(255, 107, 107, 0.16); --hours: #ff6b6b;
-  --ok: #4fae7f; --ok-bg: #173527; --warn: #ff6b6b; --warn-bg: #3d1a1a; --unsure: #66737f; --unsure-bg: #253039;
+  --bg: #0e1013; --land: #181b20; --water: #1d2a36; --border: #353a42;
+  --panel: rgba(20, 22, 26, 0.9); --panel-solid: #15171b; --line: #2b2f36;
+  --ink: #eceae4; --ink-2: #b4b0a6; --ink-3: #7f7b72;
+  --down: #4d93e8; --mid: #4a4d53; --up: #ec6a4c;
+  --flag: #f0634b; --flag-soft: rgba(240, 99, 75, 0.16); --ok: #7fb08a; --unsure: #e0a93f; --focus: #4d93e8;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 28px rgba(0, 0, 0, 0.35);
   color-scheme: dark;
 }
+
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.45; overflow: hidden; }
 * { box-sizing: border-box; }
-body {
-  background: var(--bg); color: var(--ink); font: 15px/1.55 var(--f-body);
-  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
-  padding-block: 32px 56px;
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.app { position: relative; height: 100%; }
+#map { position: absolute; inset: 0; }
+.float { position: absolute; background: var(--panel); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); }
+
+/* brand + calendar, top left */
+.cal { top: max(16px, env(safe-area-inset-top, 0px)); left: max(16px, env(safe-area-inset-left, 0px)); width: 272px; padding: 14px 14px 12px; display: grid; gap: 10px; }
+.brand { display: grid; gap: 2px; }
+.brand h1 { margin: 0; font-family: var(--font-display); font-stretch: 112%; font-weight: 800; font-size: 19px; letter-spacing: 0.01em; text-wrap: balance; }
+.brand p { margin: 0; color: var(--ink-2); font-size: 13px; }
+.month { display: flex; align-items: center; justify-content: space-between; }
+.month strong { font-family: var(--font-display); font-weight: 600; font-stretch: 100%; font-size: 15px; }
+.icon-btn { width: 30px; height: 30px; border-radius: 7px; border: 1px solid var(--line); background: transparent; cursor: pointer; display: grid; place-items: center; }
+.icon-btn:hover:not(:disabled) { background: var(--line); }
+.icon-btn:disabled { opacity: 0.35; cursor: default; }
+.grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.grid .dow { font-size: 11px; color: var(--ink-3); text-align: center; text-transform: uppercase; letter-spacing: 0.06em; padding-bottom: 2px; }
+.day { position: relative; aspect-ratio: 1; border: 1px solid transparent; border-radius: 6px; background: transparent; cursor: pointer;
+  font-family: var(--font-data); font-size: 12px; font-variant-numeric: tabular-nums; color: var(--ink-2); padding: 0; }
+.day:hover:not(:disabled) { background: var(--line); color: var(--ink); }
+.day:disabled { opacity: 0.25; cursor: default; }
+.day.sel { border-color: var(--ink); color: var(--ink); font-weight: 500; }
+.day[data-k] { color: var(--ink); font-weight: 500; }
+.day[data-k]::after { content: ""; position: absolute; left: 50%; bottom: 3px; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; }
+.day[data-k="deviation_remains"]::after { background: var(--flag); }
+.day[data-k="consistent"]::after { background: var(--ok); }
+.day[data-k="insufficient_evidence"]::after { background: var(--unsure); }
+.jump { display: flex; gap: 6px; }
+.jump button { flex: 1; border: 1px solid var(--line); background: transparent; border-radius: 7px; padding: 5px 6px; cursor: pointer; font-size: 13px; color: var(--ink-2); }
+.jump button:hover { background: var(--line); color: var(--ink); }
+.keys { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--ink-2); }
+.keys span { display: inline-flex; align-items: center; gap: 5px; }
+.keys i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+
+/* review panel, right */
+.panel { top: max(16px, env(safe-area-inset-top, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  width: 380px; padding: 18px 18px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+.eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); margin: 0; }
+.panel h2 { margin: 2px 0 0; font-family: var(--font-display); font-weight: 700; font-stretch: 106%; font-size: 24px; line-height: 1.15; text-wrap: balance; }
+.ctx { margin: 4px 0 0; color: var(--ink-2); font-size: 14px; }
+.status { display: grid; gap: 6px; padding: 12px; border-radius: 8px; border: 1px solid var(--line); }
+.status.k-deviation_remains { border-color: var(--flag); background: var(--flag-soft); }
+.pill { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; font-size: 14px; }
+.pill i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+.status .facts { display: flex; flex-wrap: wrap; gap: 4px 14px; font-family: var(--font-data); font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.chart-box { display: grid; gap: 6px; }
+.chart-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.chart-head h3, .zones h3, .model h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--ink); }
+.chart-head .read { font-family: var(--font-data); font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+#chart { width: 100%; height: auto; display: block; touch-action: none; cursor: crosshair; }
+#chart text { font-family: var(--font-data); font-size: 9.5px; fill: var(--ink-3); }
+.legend-line { display: flex; gap: 14px; font-size: 12px; color: var(--ink-2); }
+.legend-line span { display: inline-flex; align-items: center; gap: 6px; }
+.legend-line svg { flex: none; }
+.zones { display: grid; gap: 6px; }
+.zrow { display: grid; grid-template-columns: 72px 1fr 52px; align-items: center; gap: 8px; font-size: 12px; }
+.zrow .zn { font-family: var(--font-data); color: var(--ink-2); }
+.zrow .zv { font-family: var(--font-data); text-align: right; font-variant-numeric: tabular-nums; }
+.zbar { position: relative; height: 8px; }
+.zbar::before { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--line); }
+.zbar b { position: absolute; top: 0; height: 8px; border-radius: 2px; }
+.model { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+.model .by { font-size: 12px; color: var(--ink-3); margin: 0; }
+.model p.txt { margin: 0; font-size: 14.5px; line-height: 1.55; max-width: 62ch; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-family: var(--font-data); font-size: 11.5px; border: 1px solid var(--line); border-radius: 5px; padding: 2px 7px; color: var(--ink-2); }
+.chip b { color: var(--ink); font-weight: 500; }
+.quiet { margin: 0; color: var(--ink-2); font-size: 14px; }
+
+/* hour scrubber + legend, bottom */
+.hourbar { left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); width: min(520px, calc(100% - 32px)); padding: 10px 14px; display: grid; gap: 8px; }
+.hb-row { display: flex; align-items: center; gap: 12px; }
+.play { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel-solid); cursor: pointer; display: grid; place-items: center; flex: none; }
+.play:hover { border-color: var(--ink-3); }
+.hour-label { font-family: var(--font-data); font-size: 15px; font-variant-numeric: tabular-nums; min-width: 92px; }
+input[type=range] { flex: 1; accent-color: var(--ink); min-width: 0; }
+.scale { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; font-family: var(--font-data); font-size: 11px; color: var(--ink-2); }
+.ramp { height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--down), var(--mid) 50%, var(--up)); }
+.note { margin: 0; font-size: 12px; color: var(--ink-3); }
+.tip { position: absolute; pointer-events: none; padding: 6px 9px; font-size: 12px; background: var(--panel-solid); border: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow); font-family: var(--font-data); white-space: nowrap; z-index: 5; }
+
+@media (max-width: 1180px) and (min-width: 861px) { .panel { width: 330px; } .cal { width: 248px; } }
+@media (max-width: 860px) {
+  body { overflow: auto; }
+  .app { height: auto; display: flex; flex-direction: column; gap: 12px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 12px 24px; }
+  #map { position: relative; inset: auto; height: 58vh; min-height: 320px; border-radius: 10px; overflow: hidden; order: 1; }
+  .float { position: static; width: auto; transform: none; backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--panel-solid); }
+  .cal { order: 0; }
+  .hourbar { order: 2; width: auto; }
+  .panel { order: 3; overflow: visible; }
 }
-.wrap { max-width: 1080px; margin: 0 auto; display: grid; gap: 20px; }
-h1, h2 { font-family: var(--f-display); font-stretch: 85%; text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
-h1 { font-size: clamp(1.8rem, 4vw, 2.6rem); font-weight: 800; line-height: 1.05; }
-h2 { font-size: 1.35rem; font-weight: 700; }
-p { margin: 0; }
-.panel { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 20px; display: grid; gap: 16px; min-width: 0; }
-.head { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; justify-content: space-between; }
-.sub { color: var(--muted); }
-.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font: 0.8rem/1.3 var(--f-mono); color: var(--muted); }
-.legend span { display: inline-flex; align-items: center; gap: 6px; }
-.sw { width: 18px; height: 0; border-top: 2px solid; display: inline-block; }
-.sw.obs { border-color: var(--load); }
-.sw.ref { border-color: var(--ref); border-top-style: dashed; }
-.sw.hrs { height: 10px; border: 0; background: var(--hours-fill); outline: 1px solid var(--hours); }
-.dot { width: 11px; height: 11px; border-radius: 2px; display: inline-block; }
-.chip { font: 600 0.78rem/1 var(--f-mono); text-transform: uppercase; letter-spacing: 0.06em; padding: 7px 10px; border-radius: 999px; white-space: nowrap; }
-.anomaly { --c: var(--warn); --c-bg: var(--warn-bg); }
-.normal { --c: var(--ok); --c-bg: var(--ok-bg); }
-.not_sure { --c: var(--unsure); --c-bg: var(--unsure-bg); }
-.chip { color: var(--c); background: var(--c-bg); }
-.dot { background: var(--c); }
-
-/* Grid */
-.grid-scroll { overflow-x: auto; }
-.grid { display: grid; grid-template-columns: 44px repeat(53, minmax(10px, 1fr)); gap: 3px; min-width: 680px; align-items: center; }
-.grid .yr { font: 0.75rem/1 var(--f-mono); color: var(--muted); }
-.cell { aspect-ratio: 1; border: 0; padding: 0; border-radius: 2px; max-width: 100%; background: var(--c); cursor: pointer; }
-.cell.empty { visibility: hidden; }
-.cell:hover { outline: 2px solid var(--muted); outline-offset: 1px; }
-.cell[aria-pressed="true"] { outline: 2px solid var(--ink); outline-offset: 2px; }
-.cell:focus-visible, button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
-
-/* Week and day */
-.chart svg { width: 100%; height: auto; display: block; }
-.days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
-.days button { font: 500 0.8rem/1.2 var(--f-mono); color: var(--ink); background: var(--c-bg); border: 1px solid transparent; border-radius: 6px; padding: 8px 4px; cursor: pointer; display: grid; gap: 2px; justify-items: center; min-width: 0; }
-.days button small { color: var(--c); font-weight: 600; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; }
-.days button[aria-pressed="true"] { border-color: var(--ink); }
-.body { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 22px; }
-@media (max-width: 760px) { .body { grid-template-columns: 1fr; } .days small { display: none; } }
-.side { display: grid; gap: 16px; align-content: start; min-width: 0; }
-dl.facts { display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; margin: 0; font-size: 0.9rem; }
-dl.facts dt { color: var(--muted); }
-dl.facts dd { margin: 0; font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-size: 0.85rem; min-width: 0; overflow-wrap: anywhere; }
-.tablebox { overflow-x: auto; border: 1px solid var(--rule); border-radius: 8px; }
-table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
-th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--rule); white-space: nowrap; }
-th { font: 600 0.72rem/1.2 var(--f-mono); text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
-tr:last-child td { border-bottom: 0; }
-td.diff { color: var(--warn); }
-.muted { color: var(--muted); }
-.action { background: var(--bg); border-radius: 8px; padding: 12px 14px; display: grid; gap: 4px; }
-.action p { max-width: 75ch; }
-.action details { color: var(--muted); font-size: 0.88rem; }
-.action summary { cursor: pointer; font: 500 0.78rem/1.4 var(--f-mono); color: var(--ink); width: fit-content; }
-.action details p { margin-top: 8px; }
-.eyebrow { font: 500 0.72rem/1 var(--f-mono); text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
-<div class="wrap">
-  <h1>Swiss Load Alert Review</h1>
-  <section class="panel" aria-labelledby="grid-title">
-    <div class="head"><h2 id="grid-title">2020–2026, week by week</h2><div class="legend" id="grid-legend"></div></div>
-    <div class="grid-scroll"><div class="grid" id="grid" role="group" aria-label="Weeks"></div></div>
+<div class="app">
+  <div id="map" aria-label="3D map of Switzerland: columns where people live, height and colour show consumption against normal for the selected hour"></div>
+
+  <section class="float cal" aria-label="Choose a day">
+    <div class="brand">
+      <h1>Swiss Load Relief</h1>
+      <p>Electricity consumption against normal, hour by hour, 2025–2026</p>
+    </div>
+    <div class="month">
+      <button class="icon-btn" id="prev-month" aria-label="Previous month"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M9 2 4 7l5 5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button>
+      <strong id="month-label"></strong>
+      <button class="icon-btn" id="next-month" aria-label="Next month"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="m5 2 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button>
+    </div>
+    <div class="grid" id="grid" role="grid"></div>
+    <div class="jump">
+      <button id="prev-alert">‹ Previous alert</button>
+      <button id="next-alert">Next alert ›</button>
+    </div>
+    <div class="keys" aria-label="Dots mark days the detector flagged">
+      <span><i style="background:var(--flag)"></i>Anomaly</span>
+      <span><i style="background:var(--ok)"></i>Explained</span>
+      <span><i style="background:var(--unsure)"></i>Not sure</span>
+    </div>
   </section>
-  <section class="panel" id="week" aria-live="polite"></section>
-  <section class="panel" id="day" aria-live="polite"></section>
+
+  <section class="float hourbar" aria-label="Hour of the day">
+    <div class="hb-row">
+      <button class="play" id="play" aria-label="Play the day hour by hour"></button>
+      <span class="hour-label" id="hour-label"></span>
+      <input type="range" id="hour" min="0" max="23" step="1" value="12" aria-label="Hour">
+    </div>
+    <div class="scale"><span>−20 %</span><div class="ramp" aria-hidden="true"></div><span>+20 %</span></div>
+    <p class="note">Columns stand where people live. Height and colour show each zone's consumption against a normal day at the same hour. GL and VS follow the national curve, because their published consumption includes storage pumping.</p>
+  </section>
+
+  <aside class="float panel" id="panel" aria-live="polite"></aside>
+  <div class="tip" id="tip" hidden></div>
 </div>
 
+<script src="https://unpkg.com/h3-js@4.1.0/dist/h3-js.umd.js"></script>
+<script src="https://unpkg.com/deck.gl@9.1.14/dist.min.js"></script>
 <script>
-const DATA = /*DATA*/null;
+const D = /*DATA*/null;
+const Z = D.zones.length;
+const DEV = (() => { const b = atob(D.dev), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return new Int8Array(u.buffer); })();
+const BY_DATE = new Map(D.days.map((d, i) => [d.date, i]));
+const ALERTS = D.days.map((d, i) => d.flagged ? i : -1).filter(i => i >= 0);
+const VERDICT = {
+  deviation_remains: ["Anomaly: a deviation remains", "var(--flag)"],
+  consistent: ["Explained by the calendar and the weather", "var(--ok)"],
+  insufficient_evidence: ["Not sure: too few comparable days", "var(--unsure)"],
+};
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const state = { day: BY_DATE.get(D.start) ?? D.days.length - 1, hour: 12, month: null, playing: false, timer: null };
 
-const LABEL = { anomaly: "Anomaly", normal: "Normal", not_sure: "Not sure" };
-const RANK = { anomaly: 3, not_sure: 2, normal: 1 };
-const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const fmt = (x, d = 1) => x == null ? "–" : (x > 0 ? "+" : "") + Number(x).toFixed(d);
+const dev = (day, hour, zone) => DEV[(day * 24 + hour) * Z + zone] * D.dev_step;
+const pct = (x, digits = 1) => (x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(x * 100).toFixed(digits) + " %";
 const hh = h => String(h).padStart(2, "0") + ":00";
-const byDate = new Map(DATA ? DATA.days.map(d => [d.date, d]) : []);
-const state = { week: null, day: null };
 
-function windows(hours) {
-  const runs = [];
-  [...hours].sort((a, b) => a - b).forEach(h => {
-    if (runs.length && h === runs[runs.length - 1][1] + 1) runs[runs.length - 1][1] = h; else runs.push([h, h]);
-  });
-  return runs;
+/* ---------- colours from the theme tokens ---------- */
+let C = {};
+function hex(v) {
+  v = v.trim();
+  if (v.startsWith("rgb")) return v.match(/[\d.]+/g).slice(0, 3).map(Number);
+  const n = parseInt(v.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
-const winText = hours => hours.length ? windows(hours).map(([a, b]) => `${hh(a)}–${String(b).padStart(2, "0")}:59`).join(", ") : "none";
-
-/** Line chart of load against the comparable-day reference. `load`/`ref` are flat hourly arrays (null = gap). */
-function chart({ load, ref, shade, ticks, label, height = 260 }) {
-  const W = 760, H = height, L = 56, R = 10, T = 12, B = 30, n = load.length;
-  const vals = [...load, ...ref].filter(v => v != null);
-  let lo = Math.min(...vals), hi = Math.max(...vals);
-  const pad = (hi - lo) * 0.08 || 100; lo -= pad; hi += pad;
-  const step = [100, 200, 250, 500, 1000, 2000].find(s => (hi - lo) / s <= 5) || 2000;
-  const x = i => L + (i / (n - 1)) * (W - L - R);
-  const y = v => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
-  const path = arr => { let d = "", on = false; arr.forEach((v, i) => { if (v == null) { on = false; return; } d += `${on ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`; on = true; }); return d; };
-  let g = "";
-  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) {
-    g += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--rule)"/><text x="${L - 8}" y="${y(v) + 4}" text-anchor="end" fill="var(--muted)" font-size="11" font-family="var(--f-mono)">${v.toLocaleString("en-US")}</text>`;
-  }
-  const colW = (W - L - R) / (n - 1);
-  windows(shade).forEach(([s, e]) => {
-    const x0 = Math.max(L, x(s) - colW / 2), x1 = Math.min(W - R, x(e) + colW / 2);
-    g += `<rect x="${x0}" y="${T}" width="${x1 - x0}" height="${H - T - B}" fill="var(--hours-fill)" stroke="var(--hours)"/>`;
-  });
-  ticks.forEach(([i, text, sep]) => {
-    if (sep) g += `<line x1="${x(i) - colW / 2}" x2="${x(i) - colW / 2}" y1="${T}" y2="${H - B}" stroke="var(--rule)"/>`;
-    g += `<text x="${x(i) + (sep ? colW * 11.5 : 0)}" y="${H - 10}" text-anchor="middle" fill="var(--muted)" font-size="11" font-family="var(--f-mono)">${text}</text>`;
-  });
-  g += `<path d="${path(ref)}" fill="none" stroke="var(--ref)" stroke-width="2" stroke-dasharray="7 5"/>`;
-  g += `<path d="${path(load)}" fill="none" stroke="var(--load)" stroke-width="2.2"/>`;
-  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)}">${g}</svg>`;
+function readTokens() {
+  const s = getComputedStyle(document.documentElement);
+  for (const k of ["bg", "land", "water", "border", "down", "mid", "up"]) C[k] = hex(s.getPropertyValue("--" + k));
+}
+const mix = (a, b, t) => a.map((x, i) => Math.round(x + (b[i] - x) * t));
+function devColor(x) {
+  const t = Math.max(-1, Math.min(1, x / 0.2));
+  return t < 0 ? mix(C.mid, C.down, -t) : mix(C.mid, C.up, t);
 }
 
-const legend = shade => `<div class="legend"><span><i class="sw obs"></i>load (MW)</span><span><i class="sw ref"></i>comparable days</span>${shade ? '<span><i class="sw hrs"></i>anomaly hours</span>' : ""}</div>`;
+/* ---------- map ---------- */
+const MAXPOP = Math.max(...D.cells.map(c => c[1]));
+const base = D.cells.map(c => (120 + Math.pow(c[1] / MAXPOP, 0.9) * 48000));
+const GAIN = 3;
+let deckgl;
 
-function isoWeekDays(year, week) {
-  const jan4 = new Date(Date.UTC(year, 0, 4));
-  const monday = new Date(jan4); monday.setUTCDate(jan4.getUTCDate() - ((jan4.getUTCDay() + 6) % 7) + (week - 1) * 7);
-  return [...Array(7)].map((_, i) => { const d = new Date(monday); d.setUTCDate(monday.getUTCDate() + i); return d.toISOString().slice(0, 10); });
+function view() {
+  const el = document.getElementById("map");
+  const w = el.clientWidth, h = el.clientHeight, wide = innerWidth > 860;
+  const vp = new deck.WebMercatorViewport({ width: w, height: h });
+  const pad = wide ? { left: 300, right: Math.min(440, w * 0.32), top: 140, bottom: 170 } : { left: 8, right: 8, top: 40, bottom: 8 };
+  const fit = vp.fitBounds([[5.96, 45.82], [10.49, 47.81]], { padding: pad });
+  return { longitude: fit.longitude, latitude: fit.latitude - 0.12, zoom: fit.zoom + 0.22, pitch: 52, bearing: 0, minZoom: 6, maxZoom: 11 };
 }
 
-function weekStatus(dates) {
-  return dates.map(d => byDate.get(d)).filter(Boolean).reduce((s, d) => (RANK[d.status] > RANK[s] ? d.status : s), "normal");
-}
-
-function buildGrid() {
-  const [lastYear, lastWeek] = DATA.last_week;
-  let html = "";
-  for (let y = DATA.first_year; y <= lastYear; y++) {
-    html += `<div class="yr">${y}</div>`;
-    for (let w = 1; w <= 53; w++) {
-      const dates = isoWeekDays(y, w);
-      const has = w <= DATA.weeks_in_year[y] && !(y === lastYear && w > lastWeek) && dates.some(d => byDate.has(d));
-      if (!has) { html += `<span class="cell empty" aria-hidden="true"></span>`; continue; }
-      const s = weekStatus(dates);
-      const label = `Week ${w} ${y}, from ${dates[0]}: ${LABEL[s]}`;
-      html += `<button type="button" class="cell ${s}" data-key="${y}-${w}" title="${label}" aria-label="${label}"></button>`;
-    }
-  }
-  const grid = document.getElementById("grid");
-  grid.innerHTML = html;
-  grid.querySelectorAll(".cell[data-key]").forEach(c => c.addEventListener("click", () => {
-    const [y, w] = c.dataset.key.split("-").map(Number);
-    const dates = isoWeekDays(y, w).filter(d => byDate.has(d));
-    const pick = dates.find(d => byDate.get(d).status !== "normal") || dates[0];
-    showWeek(y, w, pick);
-  }));
-  document.getElementById("grid-legend").innerHTML = Object.keys(LABEL).map(s => `<span class="${s}"><i class="dot"></i>${LABEL[s]}</span>`).join("");
-}
-
-function showWeek(year, week, pick) {
-  state.week = [year, week];
-  document.querySelectorAll(".cell[data-key]").forEach(c => c.setAttribute("aria-pressed", String(c.dataset.key === `${year}-${week}`)));
-  const dates = isoWeekDays(year, week);
-  const load = [], ref = [], shade = [], ticks = [];
-  dates.forEach((d, i) => {
-    const day = byDate.get(d);
-    for (let h = 0; h < 24; h++) {
-      load.push(day ? day.load[h] : null);
-      ref.push(day && day.ref ? day.ref[h] : null);
-    }
-    if (day && day.status === "anomaly") day.hours.forEach(h => shade.push(i * 24 + h));
-    ticks.push([i * 24, new Date(d + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" }), i > 0]);
-  });
-  const fmtD = d => new Date(d + "T12:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
-  document.getElementById("week").innerHTML = `
-    <div class="head"><h2>Week ${week}, ${fmtD(dates[0])} – ${fmtD(dates[6])} ${dates[6].slice(0, 4)}</h2><span class="chip ${weekStatus(dates)}">${LABEL[weekStatus(dates)]}</span></div>
-    <div class="chart">${chart({ load, ref, shade, ticks, label: `Hourly load of week ${week} ${year} against comparable days`, height: 230 })}${legend(shade.length)}</div>
-    <div class="days" role="group" aria-label="Days of the week">${dates.map(d => {
-      const day = byDate.get(d);
-      if (!day) return `<span></span>`;
-      const name = new Date(d + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", timeZone: "UTC" });
-      return `<button type="button" class="${day.status}" data-date="${d}" aria-pressed="false">${name}<small>${LABEL[day.status]}</small></button>`;
-    }).join("")}</div>`;
-  document.querySelectorAll("#week .days button").forEach(b => b.addEventListener("click", () => showDay(b.dataset.date)));
-  showDay(pick);
-}
-
-function showDay(date) {
-  state.day = date;
-  document.querySelectorAll("#week .days button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.date === date)));
-  const d = byDate.get(date);
-  const shade = d.status === "anomaly" ? d.hours : [];
-  const facts = [
-    ["Special day", d.special || "No"],
-    ["Vs daily baseline", `${fmt(d.rel_dev_pct)}%`],
-    ["Vs comparable days", d.residual == null ? "–" : `${fmt(d.residual)}%`],
-    ["Comparable days", String(d.n_comparable)],
-    ["Temperature", `${d.temp_c.toFixed(1)} °C (normal ${d.temp_normal_c.toFixed(1)})`],
+function layers() {
+  const day = state.day, hour = state.hour;
+  const o = D.outlines;
+  return [
+    new deck.SolidPolygonLayer({ id: "land", data: o.country, getPolygon: d => d, getFillColor: C.land }),
+    new deck.SolidPolygonLayer({ id: "lakes", data: o.lakes, getPolygon: d => d, getFillColor: C.water }),
+    new deck.PathLayer({ id: "borders", data: o.cantons.flat(), getPath: d => d, getColor: C.border, getWidth: 1, widthUnits: "pixels" }),
+    new deck.H3HexagonLayer({
+      id: "load", data: D.cells, getHexagon: d => d[0], extruded: true, coverage: 0.92, pickable: true, highPrecision: false,
+      getElevation: (d, { index }) => base[index] * Math.max(0.12, 1 + GAIN * dev(day, hour, d[2])),
+      getFillColor: d => devColor(dev(day, hour, d[2])),
+      material: { ambient: 0.45, diffuse: 0.55, shininess: 8, specularColor: [20, 20, 20] },
+      updateTriggers: { getElevation: [day, hour], getFillColor: [day, hour, C.up, C.down, C.mid] },
+      transitions: reduced ? {} : { getElevation: 420, getFillColor: 420 },
+    }),
   ];
-  const ticks = [0, 6, 12, 18, 23].map(h => [h, hh(h), false]);
-  document.getElementById("day").innerHTML = `
-    <div class="head"><div><h2>${esc(d.title)}</h2><p class="sub">${esc(d.subtitle)}</p></div><span class="chip ${d.status}">${LABEL[d.status]}</span></div>
-    <div class="body">
-      <div class="chart">${chart({ load: d.load, ref: d.ref || d.load.map(() => null), shade, ticks, label: `Hourly load on ${date} against comparable days` })}${legend(shade.length)}</div>
-      <div class="side">
-        <dl class="facts">${facts.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>
+}
+
+function hover(info) {
+  const tip = document.getElementById("tip");
+  if (!info.object) { tip.hidden = true; return; }
+  const z = info.object[2];
+  tip.textContent = `${D.zones[z]}  ${pct(dev(state.day, state.hour, z))} at ${hh(state.hour)}`;
+  tip.style.left = info.x + 14 + "px"; tip.style.top = info.y + 14 + "px";
+  const m = document.getElementById("map").getBoundingClientRect(), a = document.querySelector(".app").getBoundingClientRect();
+  tip.style.left = info.x + m.left - a.left + 14 + "px"; tip.style.top = info.y + m.top - a.top + 14 + "px";
+  tip.hidden = false;
+}
+
+function initMap() {
+  readTokens();
+  deckgl = new deck.Deck({
+    parent: document.getElementById("map"), initialViewState: view(), controller: { touchRotate: true },
+    layers: layers(), onHover: hover, style: { position: "absolute", inset: 0 },
+    effects: [new deck.LightingEffect({
+      ambient: new deck.AmbientLight({ color: [255, 255, 255], intensity: 1.0 }),
+      sun: new deck.DirectionalLight({ color: [255, 250, 240], intensity: 0.9, direction: [-3, -5, -4] }),
+    })],
+    parameters: { clearColor: [...C.bg.map(x => x / 255), 1] },
+  });
+}
+const redraw = () => deckgl && deckgl.setProps({ layers: layers() });
+
+/* ---------- calendar ---------- */
+const first = new Date(D.days[0].date + "T12:00:00Z"), last = new Date(D.days.at(-1).date + "T12:00:00Z");
+const monthKey = d => d.getUTCFullYear() * 12 + d.getUTCMonth();
+function renderCalendar() {
+  const k = state.month, y = Math.floor(k / 12), m = k % 12;
+  document.getElementById("month-label").textContent = new Date(Date.UTC(y, m, 1)).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+  document.getElementById("prev-month").disabled = k <= monthKey(first);
+  document.getElementById("next-month").disabled = k >= monthKey(last);
+  const g = document.getElementById("grid");
+  g.innerHTML = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map(d => `<div class="dow">${d}</div>`).join("");
+  const lead = (new Date(Date.UTC(y, m, 1)).getUTCDay() + 6) % 7;
+  for (let i = 0; i < lead; i++) g.insertAdjacentHTML("beforeend", "<span></span>");
+  const n = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  for (let d = 1; d <= n; d++) {
+    const iso = `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    const i = BY_DATE.get(iso), b = document.createElement("button");
+    b.className = "day"; b.textContent = d;
+    if (i === undefined) b.disabled = true;
+    else {
+      const r = D.days[i];
+      if (r.flagged) b.dataset.k = r.outcome;
+      if (i === state.day) b.classList.add("sel");
+      b.setAttribute("aria-label", r.title + (r.flagged ? ", flagged" : ""));
+      b.onclick = () => select(i);
+    }
+    g.appendChild(b);
+  }
+}
+
+/* ---------- panel ---------- */
+function chart(r, hour) {
+  const W = 340, H = 128, L = 34, R = 6, T = 8, B = 18;
+  const vals = r.load.concat(r.normal), lo = Math.min(...vals), hi = Math.max(...vals);
+  const step = (hi - lo) > 2500 ? 1000 : 500;
+  const y0 = Math.floor(lo / step) * step, y1 = Math.ceil(hi / step) * step;
+  const x = h => L + (W - L - R) * h / 23, y = v => T + (H - T - B) * (1 - (v - y0) / (y1 - y0));
+  const path = a => a.map((v, h) => `${h ? "L" : "M"}${x(h).toFixed(1)},${y(v).toFixed(1)}`).join("");
+  let s = "";
+  for (let v = y0; v <= y1 + 1; v += step) s += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${L - 6}" y="${y(v) + 3}" text-anchor="end">${(v / 1000).toFixed(1)}</text>`;
+  for (const h of [0, 6, 12, 18, 23]) s += `<text x="${x(h)}" y="${H - 4}" text-anchor="middle">${h === 23 ? "23h" : h + "h"}</text>`;
+  for (const h of r.hours) s += `<rect x="${x(h) - (W - L - R) / 46}" y="${T}" width="${(W - L - R) / 23}" height="${H - T - B}" fill="var(--flag-soft)"/>`;
+  s += `<path d="${path(r.normal)}" fill="none" stroke="var(--ink-3)" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+  s += `<path d="${path(r.load)}" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round"/>`;
+  s += `<line x1="${x(hour)}" x2="${x(hour)}" y1="${T}" y2="${H - B}" stroke="var(--focus)" stroke-width="1.5"/>`;
+  s += `<circle cx="${x(hour)}" cy="${y(r.load[hour])}" r="4" fill="var(--ink)" stroke="var(--panel-solid)" stroke-width="2"/>`;
+  return `<svg id="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="National load against a normal day, in GW, by hour">${s}</svg>`;
+}
+
+function modelBlock(r) {
+  if (!r.flagged) return `<p class="quiet">The detector did not flag this day, so it is not reviewed. Scrub the hours or pick a dotted day to see an alert.</p>`;
+  if (!r.model_text) return `<div class="model"><h3>Model's review</h3><p class="quiet">No model review was generated for this day.</p></div>`;
+  const cut = r.model_text.lastIndexOf("Answer:");
+  const prose = (cut >= 0 ? r.model_text.slice(0, cut) : r.model_text).trim();
+  const fields = cut >= 0 ? r.model_text.slice(cut + 7).split(";").map(s => s.split("=").map(t => t.trim())).filter(p => p.length === 2) : [];
+  const names = { profile: "profile", concentrated: "gap mostly in", outcome: "verdict", hours: "hours" };
+  const show = v => v.replace(/_/g, " ");
+  return `<div class="model"><h3>Model's review</h3><p class="by">OpenTSLM 1B, reading the day's curve against comparable earlier days</p>
+    <p class="txt">${prose.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</p>
+    <div class="chips">${fields.map(([k, v]) => `<span class="chip">${names[k] || k} <b>${show(v)}</b></span>`).join("")}</div></div>`;
+}
+
+function renderPanel() {
+  const r = D.days[state.day], h = state.hour;
+  const [label, color] = r.flagged ? VERDICT[r.outcome] : ["Not flagged by the detector", "var(--ink-3)"];
+  const ctx = [r.context, `${r.temp_c.toFixed(1)} °C (normal ${r.temp_normal_c.toFixed(1)} °C)`].filter(Boolean).join(" · ");
+  const zs = D.zones.map((z, k) => [z, dev(state.day, h, k)]).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 6);
+  const gap = r.load[h] / r.normal[h] - 1;
+  document.getElementById("panel").innerHTML = `
+    <div><p class="eyebrow">${r.flagged ? "Alert" : "Day"} · ${r.date}</p><h2>${r.title}</h2><p class="ctx">${ctx}</p></div>
+    <div class="status k-${r.flagged ? r.outcome : "none"}">
+      <span class="pill"><i style="background:${color}"></i>${r.flagged ? "Flagged · " + label : label}</span>
+      <span class="facts"><span>z ${r.z > 0 ? "+" : ""}${r.z.toFixed(1)}</span><span>${pct(r.rel_dev_pct / 100)} vs expected</span>${r.hours.length ? `<span>hours under review ${hoursText(r.hours)}</span>` : ""}</span>
+    </div>
+    <div class="chart-box">
+      <div class="chart-head"><h3>National load, GW</h3><span class="read">${hh(h)} · ${(r.load[h] / 1000).toFixed(2)} GW · ${pct(gap)}</span></div>
+      ${chart(r, h)}
+      <div class="legend-line">
+        <span><svg width="18" height="6"><line x1="0" x2="18" y1="3" y2="3" stroke="var(--ink)" stroke-width="2"/></svg>this day</span>
+        <span><svg width="18" height="6"><line x1="0" x2="18" y1="3" y2="3" stroke="var(--ink-3)" stroke-width="1.5" stroke-dasharray="4 3"/></svg>normal day</span>
+        ${r.hours.length ? `<span><svg width="12" height="10"><rect width="12" height="10" fill="var(--flag-soft)"/></svg>under review</span>` : ""}
       </div>
     </div>
-    ${modelPanel(d)}`;
+    <div class="zones"><h3>Largest zone gaps at ${hh(h)}</h3>${zs.map(([z, v]) => {
+      const w = Math.min(50, Math.abs(v) / 0.4 * 50);
+      return `<div class="zrow"><span class="zn">${z}</span><span class="zbar"><b style="${v < 0 ? `right:50%` : `left:50%`};width:${w}%;background:${v < 0 ? "var(--down)" : "var(--up)"}"></b></span><span class="zv">${pct(v, 0)}</span></div>`;
+    }).join("")}</div>
+    ${modelBlock(r)}`;
+  const svg = document.getElementById("chart");
+  const pick = e => {
+    const b = svg.getBoundingClientRect(), fx = (e.clientX - b.left) / b.width * 340;
+    setHour(Math.round(Math.max(0, Math.min(23, (fx - 34) / (340 - 40) * 23))));
+  };
+  svg.addEventListener("pointermove", pick);
+  svg.addEventListener("pointerdown", pick);
+}
+function hoursText(hs) {
+  const runs = []; let s = hs[0], p = hs[0];
+  for (const h of hs.slice(1).concat([null])) { if (h === p + 1) { p = h; continue; } runs.push(s === p ? hh(s) : `${hh(s)}–${hh(p + 1)}`); s = p = h; }
+  return runs.join(", ");
 }
 
-function modelPanel(d) {
-  const t = d.model_text;
-  if (!t) return `<div class="action"><span class="eyebrow">Model</span><p class="muted">The model has not reviewed this day (it runs on 2025–2026).</p></div>`;
-  const cut = t.lastIndexOf("Answer:");
-  const text = (cut >= 0 ? t.slice(0, cut) : t).trim();
-  const question = d.prompt ? `<details><summary>Question asked to the model</summary><p>${esc(d.prompt)}</p></details>` : "";
-  return `<div class="action"><span class="eyebrow">Model${DATA.model_name ? " · " + esc(DATA.model_name) : ""}</span><p>${esc(text)}</p>${question}</div>`;
+/* ---------- state ---------- */
+function setHour(h) {
+  if (h === state.hour) return;
+  state.hour = h;
+  document.getElementById("hour").value = h;
+  document.getElementById("hour-label").textContent = `${hh(h)}–${hh((h + 1) % 24)}`;
+  redraw(); renderPanel();
+}
+function select(i) {
+  state.day = i;
+  const d = new Date(D.days[i].date + "T12:00:00Z");
+  state.month = monthKey(d);
+  const r = D.days[i];
+  if (r.hours.length && !state.playing) state.hour = r.hours[Math.floor(r.hours.length / 2)];
+  document.getElementById("hour").value = state.hour;
+  document.getElementById("hour-label").textContent = `${hh(state.hour)}–${hh((state.hour + 1) % 24)}`;
+  renderCalendar(); renderPanel(); redraw();
+}
+const ICON_PLAY = `<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M4 2.5v9l7.5-4.5z" fill="currentColor"/></svg>`;
+const ICON_PAUSE = `<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3.5 2.5h2.5v9H3.5zM8 2.5h2.5v9H8z" fill="currentColor"/></svg>`;
+function setPlaying(on) {
+  state.playing = on;
+  const b = document.getElementById("play");
+  b.innerHTML = on ? ICON_PAUSE : ICON_PLAY;
+  b.setAttribute("aria-label", on ? "Pause" : "Play the day hour by hour");
+  clearInterval(state.timer);
+  if (on) state.timer = setInterval(() => setHour((state.hour + 1) % 24), 650);
 }
 
-if (DATA) {
-  buildGrid();
-  const s = byDate.get(DATA.start);
-  showWeek(s.year, s.week, DATA.start);
-}
+document.getElementById("hour").addEventListener("input", e => setHour(+e.target.value));
+document.getElementById("play").onclick = () => setPlaying(!state.playing);
+document.getElementById("prev-month").onclick = () => { state.month--; renderCalendar(); };
+document.getElementById("next-month").onclick = () => { state.month++; renderCalendar(); };
+document.getElementById("prev-alert").onclick = () => { const a = ALERTS.filter(i => i < state.day).at(-1); if (a !== undefined) select(a); };
+document.getElementById("next-alert").onclick = () => { const a = ALERTS.find(i => i > state.day); if (a !== undefined) select(a); };
+addEventListener("keydown", e => {
+  if (e.target.closest("input, button")) return;
+  if (e.key === "ArrowRight") setHour((state.hour + 1) % 24);
+  if (e.key === "ArrowLeft") setHour((state.hour + 23) % 24);
+});
+const retheme = () => { readTokens(); deckgl && deckgl.setProps({ parameters: { clearColor: [...C.bg.map(x => x / 255), 1] } }); redraw(); };
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", retheme);
+new MutationObserver(retheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+addEventListener("resize", () => deckgl && deckgl.setProps({ initialViewState: view() }));
+
+setPlaying(false);
+select(state.day);
+initMap();
 </script>
