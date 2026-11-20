@@ -103,7 +103,8 @@ r = 0.99 and load r = 1.000 in 2020 and 2022; MeteoSwiss's own daily means match
   `public_holiday` (holiday for at least 20 % of the population), `bridge_day`, `summer_holidays`
   (14 Jul - 15 Aug).
 - **Weekly Q/A (the TimeNet dataset):** ISO weeks with 3 tasks each: cause, anomalous days, and net
-  importer or exporter. Rationales come from templates and are number-checked against the facts.
+  importer or exporter. The prompts give the dates but no holiday, so a holiday has to be read from
+  the curve. Rationales come from templates and are number-checked against the facts.
   208 train weeks (2020-2023), 52 validation (2024), 52 test (2025).
 
 ## TimeNet dataset

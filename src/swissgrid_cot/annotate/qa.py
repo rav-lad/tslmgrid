@@ -7,6 +7,9 @@ Tasks per window:
   * anomaly_cause (classification): the cause of the largest anomaly, or "none".
   * anomaly_days (temporal localization, exhaustive): the anomalous days; possibly none.
   * exchange (answer): net importer or exporter, and through which borders.
+
+The prompts give the week's dates and the series, never the holidays: a holiday has to be read from
+the curve (a weekday shaped like a Sunday). The facts and the rationales keep the calendar.
 """
 
 import json
@@ -149,23 +152,16 @@ def _exchange_facts(h: pd.DataFrame) -> dict:
     }
 
 
-def calendar_context(facts: dict) -> str:
-    hol = [f"{d['day']}: {d['holiday']} (public holiday for {d['share']}% of the population)"
-           for d in facts["days"] if "holiday" in d]  # fmt: skip
-    return "Public holidays this week: " + ("; ".join(hol) if hol else "none") + "."
-
-
 def prompts(facts: dict) -> dict[str, str]:
     start = rationales.day_name(pd.Timestamp(facts["start_local"]))
     end = rationales.day_name(pd.Timestamp(facts["end_local"]))
     head = f"Hourly data for Switzerland from {start} to {end} (Swiss local time)."
-    cal = calendar_context(facts)
     anomaly_inputs = ("The series are end-user electricity consumption (MW), population-weighted air "
                       "temperature (°C) and global solar radiation (W/m²).")  # fmt: skip
     return {
-        "anomaly_cause": f"{head} {anomaly_inputs} {cal} Did consumption deviate from what the weekday, "
+        "anomaly_cause": f"{head} {anomaly_inputs} Did consumption deviate from what the weekday, "
         "weather and season predict? Explain, then name the cause of the largest deviation.",
-        "anomaly_days": f"{head} {anomaly_inputs} {cal} Which days of this week had abnormal "
+        "anomaly_days": f"{head} {anomaly_inputs} Which days of this week had abnormal "
         "consumption, given the weekday, weather and season?",
         "exchange": f"{head} The series are net imports from Austria, Germany, France and Italy (MW, "
         "positive means import into Switzerland), Swiss production and total consumption (MW). Was "
